@@ -261,12 +261,18 @@ test("PWA : page dédiée sur téléphone et confirmation d’installation", asy
 
 test("PWA : nouvelle version détectée et brouillon conservé", async ({
   page,
+  context,
 }) => {
   const swPath = new URL("../../dist/sw.js", import.meta.url);
   const original = await readFile(swPath, "utf8");
   await page.goto("/");
   await page.evaluate(() => navigator.serviceWorker.ready);
   await page.waitForFunction(() => navigator.serviceWorker.controller !== null);
+  const otherTab = await context.newPage();
+  await otherTab.goto("/");
+  await otherTab.evaluate(() => {
+    window.previousWorker = navigator.serviceWorker.controller;
+  });
   await page
     .locator(".department-card")
     .filter({ hasText: "Injection" })
@@ -279,6 +285,9 @@ test("PWA : nouvelle version détectée et brouillon conservé", async ({
     );
     await page.evaluate(async () =>
       (await navigator.serviceWorker.getRegistration()).update(),
+    );
+    await otherTab.waitForFunction(
+      () => navigator.serviceWorker.controller !== window.previousWorker,
     );
     await expect(
       page.getByRole("button", { name: "Mettre à jour", exact: true }),

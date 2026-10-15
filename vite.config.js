@@ -24,18 +24,29 @@ function pwa() {
         fileName: "sw.js",
         source: `
 const CACHE=${JSON.stringify(version)}, ASSETS=${JSON.stringify(assets)};
-self.addEventListener('install', event => event.waitUntil(caches.open(CACHE).then(cache => cache.addAll(ASSETS))));
+self.addEventListener('install', event => event.waitUntil(caches.open(CACHE).then(cache => cache.addAll(ASSETS)).then(() => self.skipWaiting())));
 self.addEventListener('message', event => {
   if(event.data?.type === 'SKIP_WAITING') event.waitUntil(self.skipWaiting());
 });
-self.addEventListener('activate', event => event.waitUntil(caches.keys().then(keys => Promise.all(keys.filter(k => k.startsWith('myc-v2-') && k !== CACHE).map(k => caches.delete(k)))).then(() => self.clients.claim())));
+self.addEventListener('activate', event => event.waitUntil(self.clients.claim()));
 self.addEventListener('fetch', event => {
   const req=event.request, url=new URL(req.url);
   if(req.method!=='GET' || url.origin!==self.location.origin) return;
   event.respondWith((async()=>{
     const cache=await caches.open(CACHE);
+    // Refresh HTML online; never keep an old interface indefinitely.
+    if(req.mode==='navigate') {
+      try { const response=await fetch(req); if(response.ok)return response; }
+      catch {}
+      return (await cache.match('/index.html')) || new Response('',{status:503});
+    }
     const cached=await cache.match(url.pathname,{ignoreSearch:true,ignoreVary:true});
     if(cached)return cached;
+    // Open tabs may still import chunks from a previous version.
+    if(url.pathname.startsWith('/assets/')) {
+      const previous=await caches.match(req);
+      if(previous)return previous;
+    }
     try{return await fetch(req)}
     catch{return req.mode==='navigate' ? cache.match('/index.html') : new Response('',{status:503})}
   })());

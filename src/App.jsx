@@ -146,6 +146,7 @@ export default function App() {
       Boolean(navigator.standalone),
   );
   const [updateReady, setUpdateReady] = useState(null);
+  const [versionActive, setVersionActive] = useState(false);
   const [updating, setUpdating] = useState(false);
   const [checkingInstall, setCheckingInstall] = useState(false);
   const [installStatus, setInstallStatus] = useState("");
@@ -183,13 +184,15 @@ export default function App() {
         setInstallPrompt(null);
         setModal(null);
       },
-      update = (e) => setUpdateReady(e.detail);
+      update = (e) => setUpdateReady(e.detail),
+      activated = () => setVersionActive(true);
     window.addEventListener("online", on);
     window.addEventListener("offline", off);
     window.addEventListener("myc-install-ready", install);
     install();
     window.addEventListener("appinstalled", installed);
     window.addEventListener("myc-update-ready", update);
+    window.addEventListener("myc-version-active", activated);
     loadRecords()
       .then(setRecords)
       .catch(() =>
@@ -204,6 +207,7 @@ export default function App() {
       window.removeEventListener("myc-install-ready", install);
       window.removeEventListener("appinstalled", installed);
       window.removeEventListener("myc-update-ready", update);
+      window.removeEventListener("myc-version-active", activated);
       clearTimeout(timer.current);
     };
   }, []);
@@ -241,7 +245,7 @@ export default function App() {
     };
   }, []);
   const applyUpdate = () => {
-    if (!updateReady?.waiting || updating) return;
+    if ((!updateReady?.waiting && !versionActive) || updating) return;
     try {
       write(draftKey(form.department), form);
     } catch {
@@ -252,6 +256,10 @@ export default function App() {
       return;
     }
     setUpdating(true);
+    if (versionActive) {
+      location.reload();
+      return;
+    }
     navigator.serviceWorker.addEventListener(
       "controllerchange",
       () => location.reload(),
@@ -639,7 +647,7 @@ export default function App() {
             )}
           </div>
         )}
-        {updateReady && (
+        {(updateReady || versionActive) && (
           <div className="network-banner" role="status">
             <RefreshCw size={16} /> Une nouvelle version de MYC est prête. Votre
             brouillon sera conservé.
@@ -1732,7 +1740,7 @@ export default function App() {
             <a href="/installer.html">Ouvrir la page d’installation dédiée</a>
           </p>
           <div className="modal-actions">
-            {updateReady?.waiting ? (
+            {updateReady?.waiting || versionActive ? (
               <button
                 className="primary"
                 disabled={updating}

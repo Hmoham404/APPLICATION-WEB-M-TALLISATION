@@ -8,6 +8,11 @@ createRoot(document.getElementById("root")).render(
   </React.StrictMode>,
 );
 if (import.meta.env.PROD && "serviceWorker" in navigator) {
+  let controlled = Boolean(navigator.serviceWorker.controller);
+  navigator.serviceWorker.addEventListener("controllerchange", () => {
+    if (controlled) window.dispatchEvent(new Event("myc-version-active"));
+    controlled = true;
+  });
   window.addEventListener("load", () =>
     navigator.serviceWorker
       .register("/sw.js", { updateViaCache: "none" })
