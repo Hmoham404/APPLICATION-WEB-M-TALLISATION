@@ -138,6 +138,13 @@ export default function App() {
     [installPrompt, setInstallPrompt] = useState(null),
     [exporting, setExporting] = useState(false),
     [pdfPreview, setPdfPreview] = useState(null);
+  const [installed, setInstalled] = useState(
+    () =>
+      matchMedia("(display-mode: standalone)").matches ||
+      Boolean(navigator.standalone),
+  );
+  const [updateReady, setUpdateReady] = useState(null);
+  const [updating, setUpdating] = useState(false);
   const timer = useRef(),
     storageWarned = useRef(false),
     d = department(form.department),
@@ -167,10 +174,18 @@ export default function App() {
       install = (e) => {
         e.preventDefault();
         setInstallPrompt(e);
-      };
+      },
+      installed = () => {
+        setInstalled(true);
+        setInstallPrompt(null);
+        setModal(null);
+      },
+      update = (e) => setUpdateReady(e.detail);
     window.addEventListener("online", on);
     window.addEventListener("offline", off);
     window.addEventListener("beforeinstallprompt", install);
+    window.addEventListener("appinstalled", installed);
+    window.addEventListener("myc-update-ready", update);
     loadRecords()
       .then(setRecords)
       .catch(() =>
@@ -183,9 +198,63 @@ export default function App() {
       window.removeEventListener("online", on);
       window.removeEventListener("offline", off);
       window.removeEventListener("beforeinstallprompt", install);
+      window.removeEventListener("appinstalled", installed);
+      window.removeEventListener("myc-update-ready", update);
       clearTimeout(timer.current);
     };
   }, []);
+  useEffect(() => {
+    if (!configured) return;
+    let disposed = false,
+      running = false;
+    const sync = async () => {
+      if (
+        running ||
+        !navigator.onLine ||
+        document.visibilityState !== "visible"
+      )
+        return;
+      running = true;
+      try {
+        await syncRecords();
+        const all = await loadRecords();
+        if (!disposed) setRecords(all);
+      } catch {
+        // Keep local records and retry on the next foreground/network tick.
+      } finally {
+        running = false;
+      }
+    };
+    sync();
+    const interval = setInterval(sync, 30000);
+    window.addEventListener("online", sync);
+    document.addEventListener("visibilitychange", sync);
+    return () => {
+      disposed = true;
+      clearInterval(interval);
+      window.removeEventListener("online", sync);
+      document.removeEventListener("visibilitychange", sync);
+    };
+  }, []);
+  const applyUpdate = () => {
+    if (!updateReady?.waiting || updating) return;
+    try {
+      write(draftKey(form.department), form);
+    } catch {
+      notify(
+        "Impossible de conserver la saisie. Libérez du stockage avant la mise à jour.",
+        true,
+      );
+      return;
+    }
+    setUpdating(true);
+    navigator.serviceWorker.addEventListener(
+      "controllerchange",
+      () => location.reload(),
+      { once: true },
+    );
+    updateReady.waiting.postMessage({ type: "SKIP_WAITING" });
+  };
   const navigate = (p) => {
     setPage(p);
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -312,10 +381,19 @@ export default function App() {
     setTab("production");
   };
   const install = async () => {
+    if (installed) {
+      notify("MYC est déjà ouverte comme application sur cet appareil.");
+      return;
+    }
     if (installPrompt) {
-      await installPrompt.prompt();
-      await installPrompt.userChoice;
-      setInstallPrompt(null);
+      try {
+        await installPrompt.prompt();
+        await installPrompt.userChoice;
+      } catch {
+        setModal("install");
+      } finally {
+        setInstallPrompt(null);
+      }
     } else setModal("install");
   };
   const filtered = records.filter(
@@ -441,7 +519,8 @@ export default function App() {
             </span>
           </div>
           <button className="install-link" onClick={install}>
-            <Smartphone size={17} /> Installer l’application{" "}
+            <Smartphone size={17} />{" "}
+            {installed ? "Application installée" : "Installer l’application"}{" "}
             <Download size={14} />
           </button>
         </div>
@@ -488,6 +567,15 @@ export default function App() {
                 Synchroniser
               </button>
             )}
+          </div>
+        )}
+        {updateReady && (
+          <div className="network-banner" role="status">
+            <RefreshCw size={16} /> Une nouvelle version de MYC est prête. Votre
+            brouillon sera conservé.
+            <button onClick={applyUpdate} disabled={updating}>
+              {updating ? "Mise à jour…" : "Mettre à jour"}
+            </button>
           </div>
         )}
         <main>
@@ -1413,7 +1501,7 @@ export default function App() {
         ))}
         <button onClick={install}>
           <Smartphone size={21} />
-          <span>Installer</span>
+          <span>{installed ? "Installée" : "Installer"}</span>
         </button>
       </nav>
       {notice && (
@@ -1501,6 +1589,33 @@ export default function App() {
             <Smartphone size={42} />
             <span>Votre atelier, à portée de main.</span>
           </div>
+          {installPrompt && (
+            <div className="modal-actions">
+              <button className="primary" onClick={install}>
+                <Download size={16} /> Installer MYC maintenant
+              </button>
+            </div>
+          )}
+          {!installPrompt && window.isSecureContext && (
+            <p>
+              Le navigateur ne propose pas encore l’installation automatique. Si
+              elle devient disponible, le bouton apparaîtra ici.
+            </p>
+          )}
+          {!window.isSecureContext && (
+            <p role="alert">
+              <strong>Installation indisponible à cette adresse.</strong> Ouvrez
+              la version HTTPS de MYC pour installer l’application. Le lien
+              Wi-Fi en HTTP permet seulement de consulter le site.
+            </p>
+          )}
+          {window.isSecureContext && import.meta.env.DEV && (
+            <p>
+              Vous consultez le serveur de développement. L’installation et le
+              mode hors connexion sont disponibles dans la version compilée et
+              publiée en HTTPS.
+            </p>
+          )}
           <p>
             <strong>iPhone / iPad :</strong> ouvrez le site dans Safari, touchez
             Partager, puis « Sur l’écran d’accueil ».
@@ -1509,6 +1624,12 @@ export default function App() {
             <strong>Android / ordinateur :</strong> dans le menu de votre
             navigateur, choisissez « Installer l’application » ou « Ajouter à
             l’écran d’accueil ».
+          </p>
+          <p>
+            <strong>Sur Android, si l’installation ne s’affiche pas :</strong>{" "}
+            ouvrez ce lien dans Chrome en navigation normale, désactivez «
+            Version pour ordinateur » dans le menu ⋮, puis rechargez la page. Si
+            MYC est déjà installée, ouvrez-la depuis son icône.
           </p>
           <p className="small muted">
             L’installation nécessite une adresse HTTPS (ou localhost pour les

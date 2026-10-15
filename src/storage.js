@@ -38,7 +38,12 @@ export async function saveRecord(form) {
       });
       if (error) throw error;
       payload._pending = false;
-      cache(payload);
+      // A newer edit may have been saved while this request was in flight.
+      if (
+        localRecords().find((r) => r.id === payload.id)?.updated_at ===
+        payload.updated_at
+      )
+        cache(payload);
     } catch (error) {
       return {
         record: payload,
@@ -55,6 +60,7 @@ export async function saveRecord(form) {
 }
 export async function loadRecords() {
   if (!configured || !navigator.onLine) return localRecords();
+  const before = new Map(localRecords().map((r) => [r.id, r.updated_at]));
   let result = [],
     from = 0;
   for (;;) {
@@ -79,7 +85,9 @@ export async function loadRecords() {
     if (data.length < 500) break;
     from += 500;
   }
-  const pending = localRecords().filter((r) => r._pending);
+  const pending = localRecords().filter(
+    (r) => r._pending || r.updated_at !== before.get(r.id),
+  );
   result = [
     ...pending,
     ...result.filter((r) => !pending.some((p) => p.id === r.id)),
@@ -87,12 +95,21 @@ export async function loadRecords() {
   write("myc-records", result);
   return result;
 }
-export async function syncRecords() {
-  if (!configured || !navigator.onLine) return;
-  for (const record of localRecords().filter((r) => r._pending)) {
-    const result = await saveRecord(record);
-    if (result.warning) throw new Error(result.warning);
-  }
+let synchronization;
+export function syncRecords() {
+  if (!configured || !navigator.onLine) return Promise.resolve();
+  if (synchronization) return synchronization;
+  synchronization = (async () => {
+    for (const record of localRecords().filter((r) => r._pending)) {
+      const latest = localRecords().find((r) => r.id === record.id);
+      if (!latest?._pending) continue;
+      const result = await saveRecord(latest);
+      if (result.warning) throw new Error(result.warning);
+    }
+  })().finally(() => {
+    synchronization = undefined;
+  });
+  return synchronization;
 }
 export async function removeRecord(record) {
   if (configured) {

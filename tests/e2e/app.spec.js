@@ -1,4 +1,5 @@
 import { test, expect } from "@playwright/test";
+import { readFile, writeFile } from "node:fs/promises";
 test("saisie, qualité, PDF et historique sans connexion", async ({ page }) => {
   const errors = [];
   page.on("pageerror", (e) => errors.push(e.message));
@@ -150,4 +151,72 @@ test("PWA : manifeste, cache et rechargement sans réseau", async ({
     .filter({ hasText: "Métallisation" })
     .click();
   await expect(page.getByLabel("Référence article")).toHaveValue("HORS-LIGNE");
+});
+
+test("PWA : bouton natif et état après installation (événements simulés)", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await page
+    .getByRole("button", { name: "Installer l’application", exact: true })
+    .click();
+  await expect(page.getByRole("dialog")).toBeVisible();
+  await page.evaluate(() => {
+    const event = new Event("beforeinstallprompt", { cancelable: true });
+    event.prompt = async () => {
+      window.installRequested = true;
+    };
+    event.userChoice = Promise.resolve({ outcome: "accepted" });
+    window.dispatchEvent(event);
+  });
+  await page
+    .getByRole("button", { name: "Installer MYC maintenant", exact: true })
+    .click();
+  expect(await page.evaluate(() => window.installRequested)).toBe(true);
+  await page.evaluate(() => window.dispatchEvent(new Event("appinstalled")));
+  await expect(
+    page.getByRole("button", { name: "Application installée", exact: true }),
+  ).toBeVisible();
+});
+
+test("PWA : nouvelle version détectée et brouillon conservé", async ({
+  page,
+}) => {
+  const swPath = new URL("../../dist/sw.js", import.meta.url);
+  const original = await readFile(swPath, "utf8");
+  await page.goto("/");
+  await page.evaluate(() => navigator.serviceWorker.ready);
+  await page.waitForFunction(() => navigator.serviceWorker.controller !== null);
+  await page
+    .locator(".department-card")
+    .filter({ hasText: "Injection" })
+    .click();
+  await page.getByLabel("Référence article").fill("BROUILLON-AVANT-MAJ");
+  try {
+    await writeFile(
+      swPath,
+      original.replace(/myc-v2-\d+/, `myc-v2-${Date.now()}-test`),
+    );
+    await page.evaluate(async () =>
+      (await navigator.serviceWorker.getRegistration()).update(),
+    );
+    await expect(
+      page.getByRole("button", { name: "Mettre à jour", exact: true }),
+    ).toBeVisible();
+    await page
+      .getByRole("button", { name: "Mettre à jour", exact: true })
+      .click();
+    await expect(
+      page.getByRole("heading", { name: "La production, en clair." }),
+    ).toBeVisible();
+    await page
+      .locator(".department-card")
+      .filter({ hasText: "Injection" })
+      .click();
+    await expect(page.getByLabel("Référence article")).toHaveValue(
+      "BROUILLON-AVANT-MAJ",
+    );
+  } finally {
+    await writeFile(swPath, original);
+  }
 });

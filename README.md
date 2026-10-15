@@ -49,6 +49,18 @@ Le build comprend le manifeste PWA, des icônes iOS/Android et un service worker
 
 Pour installer le site sur un téléphone, le déployer sur une adresse **HTTPS** : l’URL locale `http://localhost` fonctionne pour les essais sur ordinateur, mais une adresse `http://192.168…` n’autorise pas l’installation PWA. Sur Android ou Chrome, utiliser **Installer l’application**. Sur iPhone ou iPad : Safari > **Partager** > **Sur l’écran d’accueil**.
 
+Le bouton ouvre la confirmation native lorsque le navigateur propose l’installation. Aucune installation silencieuse n’est possible : l’utilisateur confirme sur son appareil. Sur iPhone, le bouton explique le parcours via le menu Partager. Le site indique aussi quand l’adresse HTTP ou le serveur de développement empêche l’installation.
+
+### Mises à jour et partage entre appareils
+
+Après chaque publication d’une nouvelle version, l’application vérifie les mises à jour à son ouverture, à son retour au premier plan, au retour du réseau et toutes les heures tant qu’elle reste visible. La nouvelle version se télécharge en arrière-plan. Le bandeau **Mettre à jour** permet de l’activer en conservant le brouillon du département en cours. Elle peut aussi s’activer une fois toutes les fenêtres de l’ancienne version fermées. Une modification du code sur le PC doit d’abord être compilée et publiée pour atteindre les téléphones ; aucune réinstallation n’est nécessaire.
+
+Avec la même base Supabase configurée sur le site publié, les fiches enregistrées sont partagées entre appareils. La synchronisation s’exécute à l’ouverture, au retour du réseau, au retour au premier plan et toutes les 30 secondes lorsque l’application est visible. Une saisie hors connexion reste locale jusqu’à la synchronisation ; les brouillons non enregistrés restent propres à l’appareil. Le partage nécessite le script SQL indiqué plus haut. Aucune nouvelle migration SQL n’est nécessaire pour le bouton d’installation ou les mises à jour PWA.
+
+L’hébergement reste sur Vercel : https://application-web-m-tallisation.vercel.app/. Utiliser `npm run build` et le dossier de sortie `dist`, avec les variables publiques Supabase configurées dans Vercel. Publier une nouvelle version sur ce même projet pour conserver l’adresse et l’identité de la PWA. Ne pas publier `.env` ni de clé privée.
+
+Si Android affiche uniquement l’aide, ouvrir le lien dans Chrome en navigation normale et désactiver « Version pour ordinateur ». La fenêtre d’aide affiche **Installer MYC maintenant** dès que le navigateur émet son autorisation d’installation, même si cette autorisation arrive après le clic initial. Une installation déjà existante ou une proposition refusée peut aussi empêcher une nouvelle proposition ; utiliser alors le menu du navigateur ou l’icône MYC déjà installée.
+
 ## Vérifications
 
 ```powershell
