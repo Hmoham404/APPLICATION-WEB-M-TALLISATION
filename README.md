@@ -61,6 +61,8 @@ L’hébergement reste sur Vercel : https://application-web-m-tallisation.vercel
 
 Si Android affiche uniquement l’aide, ouvrir le lien dans Chrome en navigation normale et désactiver « Version pour ordinateur ». La fenêtre d’aide affiche **Installer MYC maintenant** dès que le navigateur émet son autorisation d’installation, même si cette autorisation arrive après le clic initial. Une installation déjà existante ou une proposition refusée peut aussi empêcher une nouvelle proposition ; utiliser alors le menu du navigateur ou l’icône MYC déjà installée.
 
+La page dédiée https://application-web-m-tallisation.vercel.app/installer.html permet de lancer l’installation sans ouvrir une ancienne interface mise en cache. La proposition native est capturée avant le démarrage de React par `public/pwa-install.js`. La fenêtre d’aide propose aussi une vérification de mise à jour et les étapes adaptées à Android ou iOS. Le navigateur conserve la décision de proposer et confirmer l’installation ; le site ne peut pas la forcer.
+
 ## Vérifications
 
 ```powershell

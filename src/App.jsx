@@ -135,7 +135,9 @@ export default function App() {
     [to, setTo] = useState("");
   const [modal, setModal] = useState(null),
     [pendingDelete, setPendingDelete] = useState(null),
-    [installPrompt, setInstallPrompt] = useState(null),
+    [installPrompt, setInstallPrompt] = useState(
+      () => window.__mycInstallPrompt || null,
+    ),
     [exporting, setExporting] = useState(false),
     [pdfPreview, setPdfPreview] = useState(null);
   const [installed, setInstalled] = useState(
@@ -145,6 +147,8 @@ export default function App() {
   );
   const [updateReady, setUpdateReady] = useState(null);
   const [updating, setUpdating] = useState(false);
+  const [checkingInstall, setCheckingInstall] = useState(false);
+  const [installStatus, setInstallStatus] = useState("");
   const timer = useRef(),
     storageWarned = useRef(false),
     d = department(form.department),
@@ -171,9 +175,8 @@ export default function App() {
   useEffect(() => {
     const on = () => setOnline(true),
       off = () => setOnline(false),
-      install = (e) => {
-        e.preventDefault();
-        setInstallPrompt(e);
+      install = () => {
+        setInstallPrompt(window.__mycInstallPrompt || null);
       },
       installed = () => {
         setInstalled(true);
@@ -183,7 +186,8 @@ export default function App() {
       update = (e) => setUpdateReady(e.detail);
     window.addEventListener("online", on);
     window.addEventListener("offline", off);
-    window.addEventListener("beforeinstallprompt", install);
+    window.addEventListener("myc-install-ready", install);
+    install();
     window.addEventListener("appinstalled", installed);
     window.addEventListener("myc-update-ready", update);
     loadRecords()
@@ -197,7 +201,7 @@ export default function App() {
     return () => {
       window.removeEventListener("online", on);
       window.removeEventListener("offline", off);
-      window.removeEventListener("beforeinstallprompt", install);
+      window.removeEventListener("myc-install-ready", install);
       window.removeEventListener("appinstalled", installed);
       window.removeEventListener("myc-update-ready", update);
       clearTimeout(timer.current);
@@ -385,16 +389,82 @@ export default function App() {
       notify("MYC est déjà ouverte comme application sur cet appareil.");
       return;
     }
-    if (installPrompt) {
+    const prompt = installPrompt || window.__mycInstallPrompt;
+    if (prompt) {
+      window.__mycInstallPrompt = null;
+      setInstallPrompt(null);
       try {
-        await installPrompt.prompt();
-        await installPrompt.userChoice;
+        await prompt.prompt();
+        const choice = await prompt.userChoice;
+        if (choice.outcome === "accepted") setModal(null);
+        else {
+          setInstallStatus(
+            "La proposition a été fermée. Vous pouvez installer MYC depuis le menu ⋮ de Chrome.",
+          );
+          setModal("install");
+        }
       } catch {
+        setInstallStatus(
+          "La proposition a expiré. Utilisez le menu ⋮ du navigateur pour installer MYC.",
+        );
         setModal("install");
-      } finally {
-        setInstallPrompt(null);
       }
     } else setModal("install");
+  };
+  const checkInstallation = async () => {
+    if (checkingInstall) return;
+    setCheckingInstall(true);
+    setInstallStatus("Vérification de la version en ligne…");
+    try {
+      if (!navigator.onLine)
+        throw new Error("Reconnectez le téléphone à Internet, puis réessayez.");
+      if (!isSecureContext || !("serviceWorker" in navigator))
+        throw new Error(
+          "Ouvrez le lien HTTPS dans Chrome ou Safari pour installer MYC.",
+        );
+      const registration = await navigator.serviceWorker.getRegistration();
+      if (!registration)
+        throw new Error(
+          "Rechargez la page pour préparer l’application, puis réessayez.",
+        );
+      await registration.update();
+      const worker = registration.installing;
+      if (
+        worker &&
+        worker.state !== "installed" &&
+        worker.state !== "redundant"
+      ) {
+        await new Promise((resolve) => {
+          const finish = () => {
+            clearTimeout(timeout);
+            worker.removeEventListener("statechange", changed);
+            resolve();
+          };
+          const changed = () => {
+            if (["installed", "redundant"].includes(worker.state)) finish();
+          };
+          const timeout = setTimeout(finish, 10000);
+          worker.addEventListener("statechange", changed);
+        });
+      }
+      if (registration.waiting) {
+        setUpdateReady(registration);
+        setInstallStatus(
+          "Une mise à jour est prête. Appliquez-la ci-dessous, puis relancez l’installation.",
+        );
+      } else {
+        setInstallPrompt(window.__mycInstallPrompt || null);
+        setInstallStatus(
+          window.__mycInstallPrompt
+            ? "Installation disponible. Touchez Installer MYC maintenant."
+            : "La vérification est terminée. Si aucun bouton d’installation n’apparaît, utilisez le menu ⋮ de Chrome : Ajouter à l’écran d’accueil → Installer.",
+        );
+      }
+    } catch (error) {
+      setInstallStatus(error.message);
+    } finally {
+      setCheckingInstall(false);
+    }
   };
   const filtered = records.filter(
     (r) =>
@@ -1598,10 +1668,43 @@ export default function App() {
           )}
           {!installPrompt && window.isSecureContext && (
             <p>
-              Le navigateur ne propose pas encore l’installation automatique. Si
-              elle devient disponible, le bouton apparaîtra ici.
+              Votre navigateur n’a pas proposé l’installation. Vous pouvez aussi
+              l’installer directement depuis son menu :
             </p>
           )}
+          {/iPhone|iPad|iPod/.test(navigator.userAgent) ||
+          (navigator.platform === "MacIntel" &&
+            navigator.maxTouchPoints > 1) ? (
+            <ol className="install-steps">
+              <li>
+                Ouvrez MYC dans <strong>Safari</strong>.
+              </li>
+              <li>
+                Touchez <strong>Partager</strong>, puis{" "}
+                <strong>Sur l’écran d’accueil</strong>.
+              </li>
+              <li>
+                Confirmez avec <strong>Ajouter</strong>.
+              </li>
+            </ol>
+          ) : (
+            <ol className="install-steps">
+              <li>
+                Dans Chrome, ouvrez le menu <strong>⋮ en haut à droite</strong>.
+              </li>
+              <li>
+                Touchez <strong>Ajouter à l’écran d’accueil</strong> ou{" "}
+                <strong>Installer l’application</strong>.
+              </li>
+              <li>
+                Choisissez <strong>Installer</strong> et confirmez.
+              </li>
+            </ol>
+          )}
+          <p>
+            L’icône MYC apparaîtra sur votre téléphone. Ouvrez-la pour utiliser
+            l’application.
+          </p>
           {!window.isSecureContext && (
             <p role="alert">
               <strong>Installation indisponible à cette adresse.</strong> Ouvrez
@@ -1617,25 +1720,37 @@ export default function App() {
             </p>
           )}
           <p>
-            <strong>iPhone / iPad :</strong> ouvrez le site dans Safari, touchez
-            Partager, puis « Sur l’écran d’accueil ».
-          </p>
-          <p>
-            <strong>Android / ordinateur :</strong> dans le menu de votre
-            navigateur, choisissez « Installer l’application » ou « Ajouter à
-            l’écran d’accueil ».
-          </p>
-          <p>
             <strong>Sur Android, si l’installation ne s’affiche pas :</strong>{" "}
             ouvrez ce lien dans Chrome en navigation normale, désactivez «
             Version pour ordinateur » dans le menu ⋮, puis rechargez la page. Si
             MYC est déjà installée, ouvrez-la depuis son icône.
           </p>
-          <p className="small muted">
-            L’installation nécessite une adresse HTTPS (ou localhost pour les
-            essais). Ouvrez l’application une première fois en ligne pour la
-            rendre disponible hors connexion.
+          <p role="status" aria-live="polite">
+            {installStatus}
           </p>
+          <p>
+            <a href="/installer.html">Ouvrir la page d’installation dédiée</a>
+          </p>
+          <div className="modal-actions">
+            {updateReady?.waiting ? (
+              <button
+                className="primary"
+                disabled={updating}
+                onClick={applyUpdate}
+              >
+                {updating ? "Mise à jour…" : "Appliquer la mise à jour"}
+              </button>
+            ) : (
+              <button
+                className="secondary"
+                disabled={checkingInstall}
+                onClick={checkInstallation}
+              >
+                <RefreshCw size={16} />{" "}
+                {checkingInstall ? "Vérification…" : "Vérifier la mise à jour"}
+              </button>
+            )}
+          </div>
         </Modal>
       )}
       {modal === "defect" && (

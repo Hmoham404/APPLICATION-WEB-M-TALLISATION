@@ -1,0 +1,215 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width,initial-scale=1,viewport-fit=cover"
+    />
+    <meta name="theme-color" content="#2256c5" />
+    <title>Installer MYC sur mon téléphone</title>
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
+    <script src="/pwa-install.js"></script>
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        background: #fff;
+        color: #182b44;
+        font:
+          16px/1.6 system-ui,
+          sans-serif;
+      }
+      main {
+        max-width: 520px;
+        margin: 0 auto;
+        padding: 40px 24px;
+      }
+      img {
+        width: 72px;
+        height: 72px;
+        border-radius: 18px;
+      }
+      small {
+        display: block;
+        color: #526b87;
+        margin: 20px 0 8px;
+        letter-spacing: 0.12em;
+      }
+      h1 {
+        font-size: 32px;
+        line-height: 1.15;
+        letter-spacing: -1px;
+        margin: 0 0 18px;
+      }
+      p {
+        color: #52647a;
+      }
+      button,
+      .open {
+        display: block;
+        width: 100%;
+        border: 0;
+        border-radius: 10px;
+        background: #2256c5;
+        color: white;
+        font: 600 16px system-ui;
+        padding: 17px;
+        text-align: center;
+        text-decoration: none;
+        cursor: pointer;
+      }
+      button:disabled {
+        background: #e8eef7;
+        color: #405b7d;
+        cursor: default;
+      }
+      .open {
+        background: #edf3fc;
+        color: #2256c5;
+        margin-top: 12px;
+      }
+      ol {
+        padding-left: 24px;
+      }
+      li {
+        padding: 8px 0;
+      }
+      section {
+        margin-top: 28px;
+        border-top: 1px solid #e2e9f2;
+        padding-top: 16px;
+      }
+      h2 {
+        font-size: 18px;
+      }
+      a {
+        color: #2256c5;
+      }
+      #status {
+        min-height: 50px;
+        font-size: 14px;
+      }
+      [hidden] {
+        display: none !important;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <img src="/icons/icon-192.png" alt="MYC" />
+      <small>PRODUCTION & QUALITÉ</small>
+      <h1>Votre atelier,<br />sur votre téléphone.</h1>
+      <p>
+        Ajoutez MYC à votre écran d’accueil pour retrouver vos saisies et vos
+        rapports.
+      </p>
+      <button id="install" disabled>
+        En attente de la proposition du navigateur
+      </button>
+      <p id="status" role="status" aria-live="polite">
+        Si le bouton reste indisponible, utilisez les étapes ci-dessous.
+      </p>
+      <a class="open" href="/">Ouvrir MYC</a>
+      <section id="android">
+        <h2>Installer depuis Chrome</h2>
+        <ol>
+          <li>Ouvrez le menu <strong>⋮ en haut à droite</strong>.</li>
+          <li>
+            Touchez <strong>Ajouter à l’écran d’accueil</strong> ou
+            <strong>Installer l’application</strong>.
+          </li>
+          <li>Choisissez <strong>Installer</strong> puis confirmez.</li>
+        </ol>
+        <p>
+          Utilisez la navigation normale. Si « Version pour ordinateur » est
+          cochée dans le menu, décochez-la puis rechargez cette page. Si MYC est
+          déjà installée, ouvrez son icône.
+        </p>
+      </section>
+      <section id="ios" hidden>
+        <h2>Installer sur iPhone ou iPad</h2>
+        <ol>
+          <li>Ouvrez cette page dans <strong>Safari</strong>.</li>
+          <li>
+            Touchez <strong>Partager</strong> puis
+            <strong>Sur l’écran d’accueil</strong>.
+          </li>
+          <li>Confirmez avec <strong>Ajouter</strong>.</li>
+        </ol>
+      </section>
+      <section>
+        <h2>Une seule application, des données partagées</h2>
+        <p>
+          Vos fiches enregistrées se synchronisent en ligne. Les mises à jour du
+          site sont récupérées par l’application : aucune réinstallation
+          nécessaire.
+        </p>
+      </section>
+    </main>
+    <script>
+      const button = document.getElementById("install");
+      const status = document.getElementById("status");
+      const ios =
+        /iPhone|iPad|iPod/.test(navigator.userAgent) ||
+        (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+      document.getElementById("ios").hidden = !ios;
+      document.getElementById("android").hidden = ios;
+      if (ios) {
+        button.hidden = true;
+        status.textContent =
+          "Sur iPhone, utilisez Partager → Sur l’écran d’accueil dans Safari.";
+      }
+      const ready = () => {
+        if (!window.__mycInstallPrompt) return;
+        button.disabled = false;
+        button.textContent = "Installer MYC";
+        status.textContent =
+          "L’installation est disponible. Touchez le bouton puis confirmez dans votre navigateur.";
+      };
+      window.addEventListener("myc-install-ready", ready);
+      ready();
+      const installed = () => {
+        button.hidden = true;
+        status.textContent =
+          "MYC est installée. Retrouvez son icône sur votre appareil.";
+      };
+      window.addEventListener("appinstalled", installed);
+      if (
+        matchMedia("(display-mode: standalone)").matches ||
+        navigator.standalone
+      )
+        installed();
+      button.addEventListener("click", async () => {
+        const prompt = window.__mycInstallPrompt;
+        if (!prompt) return;
+        window.__mycInstallPrompt = null;
+        button.disabled = true;
+        try {
+          await prompt.prompt();
+          const choice = await prompt.userChoice;
+          status.textContent =
+            choice.outcome === "accepted"
+              ? "Installation demandée au navigateur. Votre téléphone termine l’ajout de MYC."
+              : "Installation annulée. Vous pouvez la relancer depuis le menu de votre navigateur.";
+        } catch {
+          status.textContent =
+            "La proposition a expiré. Utilisez le menu du navigateur pour installer MYC.";
+        }
+        button.textContent = "Utilisez le menu du navigateur";
+      });
+      if ("serviceWorker" in navigator && isSecureContext) {
+        navigator.serviceWorker
+          .register("/sw.js", { updateViaCache: "none" })
+          .then((r) => r.update())
+          .catch(() => {
+            status.textContent =
+              "La préparation hors connexion a échoué. Vérifiez Internet et rechargez la page.";
+          });
+      }
+    </script>
+  </body>
+</html>

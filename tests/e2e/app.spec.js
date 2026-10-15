@@ -179,6 +179,86 @@ test("PWA : bouton natif et état après installation (événements simulés)", 
   ).toBeVisible();
 });
 
+test("PWA : proposition reçue avant React et refus explicite", async ({
+  page,
+}) => {
+  await page.route("**/pwa-install.js", async (route) => {
+    const response = await route.fetch();
+    await route.fulfill({
+      response,
+      body:
+        (await response.text()) +
+        `
+      const early = new Event('beforeinstallprompt', {cancelable:true});
+      early.prompt = async () => {window.earlyPromptCalled = true;};
+      early.userChoice = Promise.resolve({outcome:'dismissed'});
+      window.dispatchEvent(early);
+    `,
+    });
+  });
+  await page.goto("/");
+  await page
+    .getByRole("button", { name: "Installer l’application", exact: true })
+    .click();
+  expect(await page.evaluate(() => window.earlyPromptCalled)).toBe(true);
+  await expect(page.getByRole("dialog")).toContainText(
+    "La proposition a été fermée",
+  );
+  expect(await page.evaluate(() => window.__mycInstallPrompt)).toBeNull();
+});
+
+test("PWA : aide mobile et vérification de mise à jour sans proposition native", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/");
+  await page.evaluate(() => navigator.serviceWorker.ready);
+  await page.getByRole("button", { name: "Installer", exact: true }).click();
+  await expect(page.getByRole("dialog")).toContainText(
+    "Ajouter à l’écran d’accueil",
+  );
+  await page
+    .getByRole("button", { name: "Vérifier la mise à jour", exact: true })
+    .click();
+  await expect(page.getByRole("dialog").getByRole("status")).toContainText(
+    "La vérification est terminée",
+  );
+  await page.screenshot({
+    path: "output/screenshots/mobile-install-help.png",
+    fullPage: true,
+  });
+});
+
+test("PWA : page dédiée sur téléphone et confirmation d’installation", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/installer.html");
+  await expect(
+    page.getByRole("button", {
+      name: "En attente de la proposition du navigateur",
+    }),
+  ).toBeDisabled();
+  await page.evaluate(() => {
+    const event = new Event("beforeinstallprompt", { cancelable: true });
+    event.prompt = async () => {
+      window.dedicatedPromptCalled = true;
+    };
+    event.userChoice = Promise.resolve({ outcome: "accepted" });
+    window.dispatchEvent(event);
+  });
+  await page
+    .getByRole("button", { name: "Installer MYC", exact: true })
+    .click();
+  expect(await page.evaluate(() => window.dedicatedPromptCalled)).toBe(true);
+  await expect(page.getByRole("status")).toContainText("Installation demandée");
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= innerWidth,
+    ),
+  ).toBe(true);
+});
+
 test("PWA : nouvelle version détectée et brouillon conservé", async ({
   page,
 }) => {
