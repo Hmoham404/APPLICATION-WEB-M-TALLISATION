@@ -143,7 +143,8 @@ export default function App() {
   const [installed, setInstalled] = useState(
     () =>
       matchMedia("(display-mode: standalone)").matches ||
-      Boolean(navigator.standalone),
+      Boolean(navigator.standalone) ||
+      /MYCAndroid\//.test(navigator.userAgent),
   );
   const [updateReady, setUpdateReady] = useState(null);
   const [versionActive, setVersionActive] = useState(false);
@@ -362,7 +363,13 @@ export default function App() {
     setExporting(true);
     try {
       const pdf = await import("./pdf");
-      if (
+      if (window.MYCNative) {
+        const bytes = await pdf.makeCombinedPdf(record);
+        await window.MYCNative.saveBlob(
+          new Blob([bytes], { type: "application/pdf" }),
+          pdf.combinedPdfFilename(record),
+        );
+      } else if (
         matchMedia("(max-width: 760px)").matches ||
         navigator.maxTouchPoints > 0
       ) {
@@ -395,6 +402,21 @@ export default function App() {
   const install = async () => {
     if (installed) {
       notify("MYC est déjà ouverte comme application sur cet appareil.");
+      return;
+    }
+    if (
+      /Android/.test(navigator.userAgent) ||
+      navigator.userAgentData?.platform === "Android"
+    ) {
+      const link = document.createElement("a");
+      link.href = "/downloads/MYC-Production-1.0.0.apk";
+      link.download = "MYC-Production-1.0.0.apk";
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      notify(
+        "Téléchargement de MYC Android. Ouvrez le fichier APK téléchargé, puis confirmez Installer.",
+      );
       return;
     }
     const prompt = installPrompt || window.__mycInstallPrompt;
@@ -1667,6 +1689,20 @@ export default function App() {
             <Smartphone size={42} />
             <span>Votre atelier, à portée de main.</span>
           </div>
+          <div className="modal-actions">
+            <a
+              className="primary"
+              href="/downloads/MYC-Production-1.0.0.apk"
+              download="MYC-Production-1.0.0.apk"
+            >
+              <Download size={16} /> Télécharger MYC Android (.apk)
+            </a>
+          </div>
+          <p>
+            Sur Android : ouvrez le fichier téléchargé, autorisez cette source
+            si Android le demande, puis touchez <strong>Installer</strong>. Sur
+            iPhone, utilisez le parcours Safari ci-dessous.
+          </p>
           {installPrompt && (
             <div className="modal-actions">
               <button className="primary" onClick={install}>

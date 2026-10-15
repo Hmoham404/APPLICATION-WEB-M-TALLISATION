@@ -45,6 +45,18 @@ Le navigateur conserve un brouillon distinct pour chaque département et reprend
 
 ## Installer sur téléphone
 
+### Téléchargement direct Android
+
+[Télécharger MYC Production 1.0.0](https://application-web-m-tallisation.vercel.app/downloads/MYC-Production-1.0.0.apk). APK signé, Android 6 ou plus, package `com.myc.production`. Ouvrir le fichier téléchargé puis confirmer l’installation Android. Chrome peut demander l’autorisation d’installer depuis cette source. La page `/installer.html` propose désormais ce téléchargement immédiatement, sans attendre une proposition PWA.
+
+L’application contient une WebView Android qui ouvre uniquement l’origine Vercel MYC ; les autres liens HTTPS s’ouvrent dans le navigateur. Elle utilise la même base Supabase que le site. Les brouillons du navigateur et ceux de l’APK restent séparés ; seules les fiches enregistrées et synchronisées sont partagées. Les exports PDF et CSV utilisent le sélecteur de fichiers Android, sans permission générale d’accès au stockage. La seule permission Android déclarée est Internet.
+
+Le code Android se trouve dans `android/`. Pour recompiler : `node scripts/setup-android.mjs`, puis `node scripts/build-android.mjs`. Les outils officiels sont téléchargés dans `tmp/android-tools` et vérifiés par leur empreinte. Le script signe et vérifie l’APK, puis écrit le fichier et son SHA-256 dans `public/downloads`.
+
+**Conserver une sauvegarde privée du dossier `android/.signing/`** : il contient la clé et son mot de passe, exclus de Git. La même clé est indispensable pour les futures mises à jour de l’APK. Une évolution du site Vercel est chargée par l’application sans réinstallation ; une évolution du code Android nécessite un nouvel APK signé avec cette clé, un `versionCode` supérieur et l’installation de cette mise à jour. La signature et le téléchargement sont vérifiés automatiquement ; aucun téléphone Android physique n’est connecté à cet environnement pour valider l’exécution native.
+
+### Version web installable (PWA)
+
 Le build comprend le manifeste PWA, des icônes iOS/Android et un service worker qui met en cache le code de l’application. Les appels Supabase ne sont pas mis en cache. Ouvrir le site en ligne une première fois pour préparer l’accès hors connexion.
 
 Pour installer le site sur un téléphone, le déployer sur une adresse **HTTPS** : l’URL locale `http://localhost` fonctionne pour les essais sur ordinateur, mais une adresse `http://192.168…` n’autorise pas l’installation PWA. Sur Android ou Chrome, utiliser **Installer l’application**. Sur iPhone ou iPad : Safari > **Partager** > **Sur l’écran d’accueil**.

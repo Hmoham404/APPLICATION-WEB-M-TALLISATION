@@ -49,6 +49,7 @@
         color: #52647a;
       }
       button,
+      .download-apk,
       .open {
         display: block;
         width: 100%;
@@ -107,27 +108,37 @@
         Ajoutez MYC à votre écran d’accueil pour retrouver vos saisies et vos
         rapports.
       </p>
-      <button id="install" disabled>
+      <a
+        id="apk"
+        class="download-apk"
+        href="/downloads/MYC-Production-1.0.0.apk"
+        download="MYC-Production-1.0.0.apk"
+        >Télécharger MYC Android (.apk)</a
+      >
+      <p id="apk-info">Android 6 ou plus · Version 1.0.0 · APK signé</p>
+      <button id="install" disabled hidden>
         En attente de la proposition du navigateur
       </button>
       <p id="status" role="status" aria-live="polite">
-        Si le bouton reste indisponible, utilisez les étapes ci-dessous.
+        Après le téléchargement, ouvrez le fichier MYC-Production-1.0.0.apk pour
+        installer l’application.
       </p>
       <a class="open" href="/">Ouvrir MYC</a>
       <section id="android">
-        <h2>Installer depuis Chrome</h2>
+        <h2>Installer l’application Android</h2>
         <ol>
-          <li>Ouvrez le menu <strong>⋮ en haut à droite</strong>.</li>
+          <li>Touchez <strong>Télécharger MYC Android</strong> ci-dessus.</li>
           <li>
-            Touchez <strong>Ajouter à l’écran d’accueil</strong> ou
-            <strong>Installer l’application</strong>.
+            Ouvrez le fichier téléchargé. Si Android le demande, autorisez
+            Chrome à installer cette application via
+            <strong>Autoriser depuis cette source</strong>.
           </li>
           <li>Choisissez <strong>Installer</strong> puis confirmez.</li>
         </ol>
         <p>
-          Utilisez la navigation normale. Si « Version pour ordinateur » est
-          cochée dans le menu, décochez-la puis rechargez cette page. Si MYC est
-          déjà installée, ouvrez son icône.
+          Retrouvez ensuite l’icône <strong>MYC Production</strong> sur votre
+          téléphone. Le téléchargement ne dépend pas de la proposition
+          d’installation PWA de Chrome.
         </p>
       </section>
       <section id="ios" hidden>
@@ -159,6 +170,8 @@
       document.getElementById("ios").hidden = !ios;
       document.getElementById("android").hidden = ios;
       if (ios) {
+        document.getElementById("apk").hidden = true;
+        document.getElementById("apk-info").hidden = true;
         button.hidden = true;
         status.textContent =
           "Sur iPhone, utilisez Partager → Sur l’écran d’accueil dans Safari.";
@@ -166,9 +179,8 @@
       const ready = () => {
         if (!window.__mycInstallPrompt) return;
         button.disabled = false;
-        button.textContent = "Installer MYC";
-        status.textContent =
-          "L’installation est disponible. Touchez le bouton puis confirmez dans votre navigateur.";
+        button.hidden = false;
+        button.textContent = "Installer la version web (PWA)";
       };
       window.addEventListener("myc-install-ready", ready);
       ready();

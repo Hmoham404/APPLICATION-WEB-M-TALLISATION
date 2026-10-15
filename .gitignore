@@ -11,3 +11,5 @@ tmp/
 output/
 # Local staging from the unused Sites hosting attempt; production uses Vercel.
 /hosting/myc-production/
+/android/.signing/
+/android/build/

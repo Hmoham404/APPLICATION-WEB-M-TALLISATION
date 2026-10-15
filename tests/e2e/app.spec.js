@@ -234,11 +234,15 @@ test("PWA : page dédiée sur téléphone et confirmation d’installation", asy
 }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/installer.html");
-  await expect(
-    page.getByRole("button", {
-      name: "En attente de la proposition du navigateur",
-    }),
-  ).toBeDisabled();
+  const downloadEvent = page.waitForEvent("download");
+  await page
+    .getByRole("link", { name: "Télécharger MYC Android (.apk)" })
+    .click();
+  const download = await downloadEvent;
+  expect(download.suggestedFilename()).toBe("MYC-Production-1.0.0.apk");
+  const bytes = await readFile(await download.path());
+  expect(bytes.subarray(0, 2).toString()).toBe("PK");
+  expect(bytes.length).toBeGreaterThan(10000);
   await page.evaluate(() => {
     const event = new Event("beforeinstallprompt", { cancelable: true });
     event.prompt = async () => {
@@ -248,7 +252,10 @@ test("PWA : page dédiée sur téléphone et confirmation d’installation", asy
     window.dispatchEvent(event);
   });
   await page
-    .getByRole("button", { name: "Installer MYC", exact: true })
+    .getByRole("button", {
+      name: "Installer la version web (PWA)",
+      exact: true,
+    })
     .click();
   expect(await page.evaluate(() => window.dedicatedPromptCalled)).toBe(true);
   await expect(page.getByRole("status")).toContainText("Installation demandée");
@@ -257,6 +264,75 @@ test("PWA : page dédiée sur téléphone et confirmation d’installation", asy
       () => document.documentElement.scrollWidth <= innerWidth,
     ),
   ).toBe(true);
+});
+
+test("Android : le bouton principal télécharge directement l’APK", async ({
+  browser,
+}) => {
+  const context = await browser.newContext({
+    baseURL: "http://127.0.0.1:4174",
+    userAgent:
+      "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 Chrome/130.0.0.0 Mobile Safari/537.36",
+    viewport: { width: 390, height: 844 },
+  });
+  try {
+    const page = await context.newPage();
+    await page.goto("/");
+    const pending = page.waitForEvent("download");
+    await page.getByRole("button", { name: "Installer", exact: true }).click();
+    expect((await pending).suggestedFilename()).toBe(
+      "MYC-Production-1.0.0.apk",
+    );
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+  } finally {
+    await context.close();
+  }
+});
+
+test("Android APK : export PDF transmis au sélecteur de fichiers natif", async ({
+  browser,
+}) => {
+  const context = await browser.newContext({
+    baseURL: "http://127.0.0.1:4174",
+    userAgent:
+      "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 Chrome/130.0.0.0 Mobile Safari/537.36 MYCAndroid/1.0.0",
+    viewport: { width: 390, height: 844 },
+  });
+  const page = await context.newPage();
+  try {
+    await page.goto("/");
+    await page.evaluate(() => {
+      const channel = new MessageChannel();
+      channel.port1.onmessage = ({ data }) => {
+        window.savedNativeFile = JSON.parse(data);
+        channel.port1.postMessage(
+          JSON.stringify({ id: window.savedNativeFile.id, ok: true }),
+        );
+      };
+      window.postMessage("MYC_ANDROID_READY", location.origin, [channel.port2]);
+    });
+    await page.waitForFunction(() => !!window.MYCNative);
+    await page
+      .locator(".department-card")
+      .filter({ hasText: "Injection" })
+      .click();
+    await page.getByLabel("Référence article").fill("APK-TEST");
+    await page.getByLabel("Ordre de fabrication").fill("APK-01");
+    await page.getByLabel("Presse").fill("P01");
+    await page.getByLabel("Équipe / shift").fill("A");
+    await page
+      .getByRole("button", { name: "Rapport PDF", exact: true })
+      .click();
+    await page.waitForFunction(() => !!window.savedNativeFile);
+    const saved = await page.evaluate(() => window.savedNativeFile);
+    expect(saved.mime).toBe("application/pdf");
+    expect(saved.filename).toContain("MYC-INJ");
+    expect(Buffer.from(saved.base64, "base64").subarray(0, 5).toString()).toBe(
+      "%PDF-",
+    );
+  } finally {
+    await context.close();
+  }
 });
 
 test("PWA : nouvelle version détectée et brouillon conservé", async ({
