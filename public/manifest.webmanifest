@@ -1,0 +1,16 @@
+{
+  "id": "/",
+  "name": "MYC · Production & Qualité",
+  "short_name": "MYC Production",
+  "description": "Saisie et rapports des ateliers Métallisation, Assemblage, Injection et Sérigraphie.",
+  "lang": "fr",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#2256c5",
+  "icons": [
+    {"src":"/icons/icon-192.png","sizes":"192x192","type":"image/png","purpose":"any"},
+    {"src":"/icons/icon-512.png","sizes":"512x512","type":"image/png","purpose":"any maskable"}
+  ]
+}

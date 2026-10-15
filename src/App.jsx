@@ -1,33 +1,1589 @@
-import React,{useEffect,useMemo,useState}from'react';import{supabase,configured}from'./supabase';import{downloadCombinedPdf,previewCombinedPdf,pdfReady}from'./pdf';import{ArrowDownToLine,ArrowLeft,ArrowRight,Check,ChevronDown,Clock,FileText,History,LockKeyhole,LogOut,Plus,Printer,Save,Settings2,ShieldCheck,Trash2}from'lucide-react';
-const DEFECTS=['Particule','Bavure','Tache noire','Tache blanche','Rayure','Retassure',"Tache d'huile",'Effet ombre (couleur)','Refus'];const TIMES=Array.from({length:10},(_,i)=>`${String(i+7).padStart(2,'0')}:00`);const CODES=Array.from({length:11},(_,i)=>`C${i+1}`);
-const blank=()=>({id:null,general:{date:new Date().toISOString().slice(0,10),article:'',client:'',of:'',chain:'',speed:'',cadence:'',shift:'',matricule:'',counterStart:'',counterEnd:'',carton:''},hours:TIMES.map(time=>({time,ok:'',nok:'',stoppages:[],comment:''})),quality:DEFECTS.map(name=>({name,values:TIMES.map(()=> '')}))});
-const localRead=()=>{try{return JSON.parse(localStorage.getItem('myc-records')||'[]')}catch{return[]}};
-function App(){const [page,setPage]=useState('home'),[tab,setTab]=useState('production'),[form,setForm]=useState(()=>{try{return JSON.parse(localStorage.getItem('myc-draft'))||blank()}catch{return blank()}}),[records,setRecords]=useState([]),[notice,setNotice]=useState(''),[busy,setBusy]=useState(false),[pdfUrl,setPdfUrl]=useState(''),[pendingDelete,setPendingDelete]=useState(null),[savedRecord,setSavedRecord]=useState(null);
- useEffect(()=>{setRecords(localRead())},[]);
- const totals=useMemo(()=>{const nok=form.hours.reduce((s,h)=>s+(Number(h.nok)||0),0),def=form.quality.reduce((s,r)=>s+r.values.reduce((a,n)=>a+(Number(n)||0),0),0),ok=form.hours.reduce((s,h)=>s+(Number(h.ok)||0),0),produced=form.hours.reduce((s,h)=>s+(Number(h.ok)||0)+(Number(h.nok)||0),0);return{nok,def,rate:produced?100*def/produced:0}},[form]);
- useEffect(()=>{localStorage.setItem('myc-draft',JSON.stringify(form))},[form]);
- const msg=(s)=>{setNotice(s);setTimeout(()=>setNotice(''),4500)};const setGeneral=(k,v)=>setForm(f=>({...f,general:{...f.general,[k]:v}}));const setHour=(i,k,v)=>setForm(f=>({...f,hours:f.hours.map((h,j)=>j===i?{...h,[k]:v}:h)}));const setStop=(i,j,k,v)=>setForm(f=>({...f,hours:f.hours.map((h,x)=>x===i?{...h,stoppages:h.stoppages.map((s,y)=>y===j?{...s,[k]:v}:s)}:h)}));
- const save=async()=>{const g=form.general;if(!g.date||!g.article||!g.of||!g.chain||!g.shift){msg('Renseignez les champs obligatoires avant l’enregistrement.');return null}setBusy(true);const payload={...form,updated_at:new Date().toISOString()};try{if(configured){const{data,error}=await supabase.rpc('save_myc_metallisation_report',{payload});if(error)throw error;payload.id=data}else{payload.id=form.id||crypto.randomUUID();const old=localRead().filter(r=>r.id!==payload.id);localStorage.setItem('myc-records',JSON.stringify([payload,...old]));setRecords([payload,...old])}setRecords(list=>[payload,...list.filter(r=>r.id!==payload.id)]);setSavedRecord(payload);localStorage.removeItem('myc-draft');setForm(blank());msg('Saisie enregistrée. Le formulaire est prêt pour une nouvelle saisie.');return payload}catch(e){msg(`Échec de l’enregistrement : ${e.message}`);return null}finally{setBusy(false)}};
- const load=async()=>{if(configured){const{data,error}=await supabase.from('myc_metallisation_reports').select('id,record_data,created_at').order('created_at',{ascending:false});if(error){msg(error.message);return}setRecords(data.map(x=>({...x.record_data,id:x.id,created_at:x.created_at})))}else setRecords(localRead())};
- const deleteRecord=async record=>{try{if(configured){const{error}=await supabase.from('myc_metallisation_reports').delete().eq('id',record.id);if(error)throw error}else{const next=localRead().filter(r=>r.id!==record.id);localStorage.setItem('myc-records',JSON.stringify(next))}setRecords(list=>list.filter(r=>r.id!==record.id));setPendingDelete(null);msg('Saisie supprimee de l historique.')}catch(e){msg(`Suppression impossible : ${e.message}`)}};
- useEffect(()=>{if(page==='history')load()},[page]);
- const openRecord=r=>{setForm({...blank(),...r});setPage('entry');setTab('production')};
- const addStop=i=>setForm(f=>({...f,hours:f.hours.map((h,j)=>j===i?{...h,stoppages:[...h.stoppages,{code:'',duration:'',comment:''}]}:h)}));const addHour=()=>setForm(f=>{const last=f.hours.at(-1)?.time||'06:00';const [hour,minute]=last.split(':').map(Number);const nextHour=hour+1;const time=`${String(nextHour).padStart(2,'0')}:${String(minute).padStart(2,'0')}`;return{...f,hours:[...f.hours,{time,ok:'',nok:'',stoppages:[],comment:''}]}});
- const generate=async(preview=false)=>{try{let r={...form};const empty=!r.general.article&&!r.general.of;if(empty&&savedRecord)r=savedRecord;else if(!r.id){const saved=await save();if(!saved)return;r=saved}const u=await previewCombinedPdf(r);if(preview){setPdfUrl(u)}else await downloadCombinedPdf(r)}catch(e){msg(e.message)}};
- const field=(label,key,type='text',placeholder='')=><label className="field"><span>{label}</span><input type={type} value={form.general[key]??''} onChange={e=>setGeneral(key,e.target.value)} placeholder={placeholder}/></label>;
-
- return <div className="app"><header className="topbar"><button className="brand" onClick={()=>setPage('home')} aria-label="Accueil MYC"><span className="brand-mark">MYC</span><span className="brand-name">BEAUTY INNOVATION<small>TUNISIA</small></span></button><nav><button className={page==='home'?'active':''} onClick={()=>setPage('home')}>Accueil</button><button className={page==='entry'?'active':''} onClick={()=>setPage('entry')}>Nouvelle saisie</button><button className={page==='history'?'active':''} onClick={()=>setPage('history')}>Historique</button></nav><div className="status"><i className={configured?'dot green':'dot gold'}/><span>{configured?'Acces direct partage':'Mode local'}</span></div></header>
- {!configured&&<div className="local-banner"><ShieldCheck size={16}/> Mode local actif. Configurez Supabase pour synchroniser les saisies.</div>}{page==='home'?<main className="home"><div className="home-copy"><div className="eyebrow"><span/> DÉPARTEMENT MÉTALLISATION <span className="eyebrow-line"/></div><h1>SUIVI DE PRODUCTION<br/><em>&mdash; MÉTALLISATION</em></h1><p className="lead">Saisie journalière et génération automatique<br/>des fiches PDF.</p><div className="home-actions"><button className="primary" onClick={()=>{setSavedRecord(null);setForm(blank());setPage('entry')}}>COMMENCER UNE SAISIE <ArrowRight size={16}/></button><button className="secondary" onClick={()=>setPage('history')}>CONSULTER L'HISTORIQUE <History size={16}/></button></div><div className="home-foot"><span>01 &mdash; PRODUCTION</span><span>02 &mdash; QUALITÉ</span><span>03 &mdash; DOCUMENTS</span></div></div><aside className="home-art" aria-label="Les fiches de suivi"><div className="art-top"><span>ATELIER / TUNISIE</span><span>01 ? 02</span></div><div className="art-orbit orbit-one"/><div className="art-orbit orbit-two"/><div className="form-preview"><div className="form-preview-head"><span>MYC <i>BEAUTY INNOVATION</i></span><span className="preview-stamp">METALLISATION</span></div><div className="preview-title">SUIVI DE PRODUCTION</div><div className="preview-fields"><span>DATE <b>? ? / ? ? / ? ?</b></span><span>ORDRE DE FABRICATION <b>????????</b></span></div><div className="preview-grid"><i/><i/><i/><i/><i/><i/><i/><i/><i/><i/><i/><i/></div><div className="preview-footer"><span>01&nbsp; PRODUCTION</span><span>02&nbsp; QUALITE</span></div></div><div className="art-note"><span className="art-note-dot"/><span><b>Un suivi. Deux fiches.</b><small>Production et controle qualite</small></span><ArrowRight size={16}/></div><div className="art-coordinate">MYC / TUNISIA <span>?</span> MET 01</div></aside></main>:null}
- {page==='entry'&&<main className="content"><div className="page-heading"><div><button className="back" onClick={()=>setPage('home')}><ArrowLeft size={15}/> Accueil</button><div className="eyebrow">FICHE DE PRODUCTION <span className="eyebrow-line"/></div><h2>Nouvelle saisie</h2><p>Complétez les informations de la journée puis les relevés horaires.</p></div><div className="doc-chip"><FileText size={17}/><span>Document de suivi<small>{form.id?'Modification':'Brouillon'}</small></span></div></div>
- <div className="tabs"><button className={tab==='production'?'selected':''} onClick={()=>setTab('production')}><span className="tab-no">01</span> Production <ChevronDown size={15}/></button><button className={tab==='quality'?'selected':''} onClick={()=>setTab('quality')}><span className="tab-no">02</span> Défauts qualité <ChevronDown size={15}/></button><span className="tab-progress">{tab==='production'?'Données de fabrication':'Contrôle qualité'}</span></div>
- {tab==='production'?<><section className="card"><div className="section-head"><div><span className="section-kicker">IDENTIFICATION</span><h3>Informations g&#233;n&#233;rales</h3></div><span className="required-note">* Champs obligatoires</span></div><div className="field-grid">{field('Date *','date','date')}{field('Référence article *','article','text','Ex. MYC-2048')}{field('Client','client','text','Nom du client')}{field('Ordre de fabrication (OF) *','of','text','Numéro OF')}{field('Chaîne *','chain','text','Ex. M1')}{field('Vitesse de ligne','speed','number','0')}{field('Cadence par heure','cadence','number','0')}{field('équipe / Shift *','shift','text','Ex. A')}{field('Matricule','matricule','text','')}{field('Compteur début','counterStart','number','0')}{field('Compteur fin','counterEnd','number','0')}{field('Numéro de carton','carton','text','')}</div></section><section className="card table-card"><div className="section-head"><div><span className="section-kicker">SUIVI HORAIRE</span><h3>Production par heure</h3></div><span className="hint"><Clock size={14}/> {form.hours.length} créneaux � arrêts multiples possibles</span></div><div className="table-scroll"><table className="production-table"><thead><tr><th>Heure</th><th>Qté OK</th><th>Qté NOK</th><th>Arrêt(s) de production</th><th>Commentaire</th></tr></thead><tbody>{form.hours.map((h,i)=><tr key={i}><td className="time-cell">{h.time}</td><td><input type="number" min="0" value={h.ok} onChange={e=>setHour(i,'ok',e.target.value)} aria-label={`Quantité OK ${h.time}`}/></td><td><input type="number" min="0" value={h.nok} onChange={e=>setHour(i,'nok',e.target.value)} aria-label={`Quantité NOK ${h.time}`}/></td><td><div className="stops">{h.stoppages.map((s,j)=><div className="stop-row" key={j}><select value={s.code} onChange={e=>setStop(i,j,'code',e.target.value)}><option value="">Code</option>{CODES.map(c=><option key={c}>{c}</option>)}</select><input className="duration" type="number" min="0" placeholder="min" value={s.duration} onChange={e=>setStop(i,j,'duration',e.target.value)}/><input className="stop-comment" placeholder="Motif / commentaire" value={s.comment} onChange={e=>setStop(i,j,'comment',e.target.value)}/><button className="remove" onClick={()=>setForm(f=>({...f,hours:f.hours.map((x,k)=>k===i?{...x,stoppages:x.stoppages.filter((_,n)=>n!==j)}:x)}))} title="Supprimer l'arrêt"><Trash2 size={13}/></button></div>)}<button className="add-stop" onClick={()=>addStop(i)}><Plus size={13}/> Ajouter un arrêt</button></div></td><td><input value={h.comment} onChange={e=>setHour(i,'comment',e.target.value)} placeholder="Note"/></td></tr>)}</tbody><tfoot><tr><td>Total</td><td>{form.hours.reduce((a,h)=>a+(Number(h.ok)||0),0)}</td><td>{totals.nok}</td><td colSpan="2">&mdash;</td></tr></tfoot></table></div><button type="button" className="add-hour" onClick={addHour}><Plus size={14}/> Ajouter une heure</button></section></>:<><section className="card"><div className="section-head"><div><span className="section-kicker">CONTRÔLE QUALITÉ</span><h3>Défauts par heure</h3><p className="card-desc">Saisissez uniquement les quantités observées.</p></div><span className="quality-total">{totals.def} <small>défauts</small></span></div><div className="table-scroll"><table className="quality-table"><thead><tr><th>Type de défaut</th>{TIMES.map(t=><th key={t}>{t}</th>)}<th>Total</th></tr></thead><tbody>{form.quality.map((r,ri)=><tr key={r.name}><td>{String(ri+1).padStart(2,'0')} <b>{r.name}</b></td>{r.values.map((v,vi)=><td key={vi}><input type="number" min="0" value={v} aria-label={`${r.name}, ${TIMES[vi]}`} onChange={e=>setForm(f=>({...f,quality:f.quality.map((q,j)=>j===ri?{...q,values:q.values.map((n,k)=>k===vi?e.target.value:n)}:q)}))}/></td>)}<td className="sum-cell">{r.values.reduce((a,n)=>a+(Number(n)||0),0)}</td></tr>)}</tbody><tfoot><tr><td>Total par heure</td>{TIMES.map((_,i)=><td key={i}>{form.quality.reduce((s,r)=>s+(Number(r.values[i])||0),0)}</td>)}<td>{totals.def}</td></tr></tfoot></table></div><div className="scrap-summary"><div><span>Quantité NOK (production)</span><b>{totals.nok}</b></div><div><span>Total défauts saisis</span><b>{totals.def}</b></div><div className="scrap-rate"><span>Taux de rebut estimé</span><b>{totals.rate.toFixed(2)}<small>%</small></b><small>Reporté sur la fiche PDF</small></div></div></section></>}
- <div className="actionbar"><div className="save-state"><span className="dot green"/> Les modifications sont pretes a etre enregistrees{(!pdfReady.production||!pdfReady.quality)&&<span className="pdf-note">PDF indisponibles : modeles originaux MYC manquants.</span>}</div><div className="action-buttons"><button className="secondary" onClick={()=>generate(true)}><Printer size={15}/> Aper&#231;u PDF complet</button><button className="primary" disabled={busy} onClick={save}><Save size={15}/> {busy?'Enregistrement?':'ENREGISTRER'}</button><button className="pdf-button" onClick={()=>generate(false)}><ArrowDownToLine size={15}/> T&#201;L&#201;CHARGER PDF COMPLET</button></div></div></main>}
- {page==='history'&&<main className="content"><div className="page-heading"><div><div className="eyebrow">ARCHIVES <span className="eyebrow-line"/></div><h2>Historique des saisies</h2><p>Retrouvez, modifiez et téléchargez les fiches enregistrées.</p></div><button className="primary" onClick={()=>{setForm(blank());setPage('entry')}}><Plus size={16}/> Nouvelle saisie</button></div><section className="card history-card"><div className="section-head"><div><span className="section-kicker">REGISTRE</span><h3>Saisies enregistrées</h3><p className="card-desc">Historique dédi� aux saisies MYC Métallisation uniquement.</p></div><button className="refresh" onClick={load}><Settings2 size={15}/> Actualiser</button></div><div className="table-scroll"><table className="history-table"><thead><tr><th>Date</th><th>OF</th><th>Article</th><th>Chaîne</th><th>équipe</th><th>Actions</th></tr></thead><tbody>{records.length?records.map((r,i)=><tr key={r.id||i}><td>{r.general?.date||'—'}</td><td>{r.general?.of||'—'}</td><td>{r.general?.article||'—'}</td><td>{r.general?.chain||'—'}</td><td>{r.general?.shift||'—'}</td><td className="row-actions"><button onClick={()=>openRecord(r)}>Ouvrir</button><button onClick={()=>openRecord(r)}>Modifier</button><button className="history-pdf" title="Telecharger le PDF complet" aria-label="Telecharger le PDF complet" onClick={()=>downloadCombinedPdf(r)}><FileText size={16}/><span>PDF complet</span></button><button className="delete-action" title="Supprimer de l historique" onClick={()=>setPendingDelete(r)}><Trash2 size={15}/><span>Supprimer</span></button></td></tr>):<tr><td className="empty" colSpan="6">Aucune saisie enregistrée pour le moment.</td></tr>}</tbody></table></div></section></main>}
- {pendingDelete&&<div className="modal-backdrop delete-backdrop" onClick={()=>setPendingDelete(null)}><section className="delete-modal" role="alertdialog" aria-modal="true" aria-labelledby="delete-title" onClick={e=>e.stopPropagation()}><button className="auth-close" onClick={()=>setPendingDelete(null)} aria-label="Fermer">&times;</button><span className="delete-icon"><Trash2 size={20}/></span><div className="eyebrow">HISTORIQUE / SUPPRESSION <span className="eyebrow-line"/></div><h2 id="delete-title">Supprimer cette saisie ?</h2><p>Cette suppression est d&eacute;finitive. Les donn&eacute;es horaires et qualit&eacute; li&eacute;es seront aussi supprim&eacute;es.</p><div className="delete-details"><span>DATE <b>{pendingDelete.general?.date||'?'}</b></span><span>OF <b>{pendingDelete.general?.of||'?'}</b></span><span>ARTICLE <b>{pendingDelete.general?.article||'?'}</b></span></div><div className="delete-actions"><button className="secondary" onClick={()=>setPendingDelete(null)}>Annuler</button><button className="delete-confirm" onClick={()=>deleteRecord(pendingDelete)}><Trash2 size={15}/> Supprimer la saisie</button></div></section></div>}<footer className="footer"><span>MYC BEAUTY INNOVATION <i>·</i> TUNISIA</span><span>PRODUCTION / MÉTALLISATION <i>·</i> 01</span></footer>{notice&&<div className="toast"><Check size={16}/>{notice}</div>}{pdfUrl&&<div className="modal-backdrop" onClick={()=>{URL.revokeObjectURL(pdfUrl);setPdfUrl('')}}><div className="preview-modal" onClick={e=>e.stopPropagation()}><div><b>Aperçu du document</b><button onClick={()=>{URL.revokeObjectURL(pdfUrl);setPdfUrl('')}}>Fermer</button></div><iframe src={pdfUrl} title="Aperçu PDF"/></div></div>}</div>
+import React, { useEffect, useRef, useState } from "react";
+import {
+  ArrowRight,
+  ArrowLeft,
+  Layers3,
+  Component,
+  Factory,
+  Paintbrush,
+  LayoutGrid,
+  ClipboardPenLine,
+  FolderOpen,
+  Download,
+  Plus,
+  Trash2,
+  Save,
+  Check,
+  X,
+  Search,
+  RefreshCw,
+  WifiOff,
+  Smartphone,
+  FileText,
+  ChevronRight,
+  Clock3,
+  CircleCheck,
+  TriangleAlert,
+  BarChart3,
+} from "lucide-react";
+import {
+  DEPARTMENTS,
+  department,
+  blank,
+  normalize,
+  totals,
+  addHour,
+  validate,
+  format,
+  dateLabel,
+  localDate,
+  number,
+} from "./model";
+import { configured } from "./supabase";
+import {
+  read,
+  write,
+  draft,
+  draftKey,
+  localRecords,
+  saveRecord,
+  loadRecords,
+  syncRecords,
+  removeRecord,
+} from "./storage";
+const ICONS = {
+  metallisation: Layers3,
+  assemblage: Component,
+  injection: Factory,
+  serigraphie: Paintbrush,
+};
+const CODES = Array.from({ length: 11 }, (_, i) => `C${i + 1}`);
+function Metric({ label, value, unit, accent }) {
+  return (
+    <div className={`metric ${accent || ""}`}>
+      <span>{label}</span>
+      <strong>
+        {value}
+        <small>{unit}</small>
+      </strong>
+    </div>
+  );
 }
-export default App;
-
-
-
-
-
+function Field({
+  label,
+  value,
+  onChange,
+  type = "text",
+  placeholder,
+  required = false,
+}) {
+  return (
+    <label className="field">
+      <span>
+        {label}
+        {required && <b> *</b>}
+      </span>
+      <input
+        type={type}
+        value={value ?? ""}
+        onChange={(e) => onChange(e.target.value)}
+        min={type === "number" ? 0 : undefined}
+        step={type === "number" ? 1 : undefined}
+        required={required}
+        placeholder={placeholder}
+      />
+    </label>
+  );
+}
+function Modal({ title, onClose, children }) {
+  const ref = useRef();
+  useEffect(() => {
+    const previous = document.activeElement;
+    ref.current.showModal();
+    return () => previous?.focus();
+  }, []);
+  return (
+    <dialog
+      ref={ref}
+      onCancel={onClose}
+      onClick={(e) => {
+        if (e.target === ref.current) onClose();
+      }}
+    >
+      <div className="modal-head">
+        <h2>{title}</h2>
+        <button className="icon-button" onClick={onClose} aria-label="Fermer">
+          <X size={20} />
+        </button>
+      </div>
+      {children}
+    </dialog>
+  );
+}
+export default function App() {
+  const [page, setPage] = useState("home"),
+    [dep, setDep] = useState(read("myc-department", "metallisation"));
+  const [form, setForm] = useState(() => draft(dep) || blank(dep)),
+    [records, setRecords] = useState(localRecords);
+  const [tab, setTab] = useState("production"),
+    [busy, setBusy] = useState(false),
+    [notice, setNotice] = useState(null),
+    [online, setOnline] = useState(navigator.onLine);
+  const [search, setSearch] = useState(""),
+    [filter, setFilter] = useState("all"),
+    [from, setFrom] = useState(""),
+    [to, setTo] = useState("");
+  const [modal, setModal] = useState(null),
+    [pendingDelete, setPendingDelete] = useState(null),
+    [installPrompt, setInstallPrompt] = useState(null),
+    [exporting, setExporting] = useState(false);
+  const timer = useRef(),
+    storageWarned = useRef(false),
+    d = department(form.department),
+    stats = totals(form),
+    today = localDate();
+  const notify = (text, error = false) => {
+    setNotice({ text, error });
+    clearTimeout(timer.current);
+    timer.current = setTimeout(() => setNotice(null), 7500);
+  };
+  useEffect(() => {
+    try {
+      write(draftKey(form.department), form);
+    } catch {
+      if (!storageWarned.current) {
+        storageWarned.current = true;
+        notify(
+          "Stockage de l’appareil indisponible ou plein. Exportez votre PDF avant de quitter.",
+          true,
+        );
+      }
+    }
+  }, [form]);
+  useEffect(() => {
+    const on = () => setOnline(true),
+      off = () => setOnline(false),
+      install = (e) => {
+        e.preventDefault();
+        setInstallPrompt(e);
+      };
+    window.addEventListener("online", on);
+    window.addEventListener("offline", off);
+    window.addEventListener("beforeinstallprompt", install);
+    loadRecords()
+      .then(setRecords)
+      .catch(() =>
+        notify(
+          "Serveur indisponible : affichage des fiches conservées sur cet appareil.",
+          true,
+        ),
+      );
+    return () => {
+      window.removeEventListener("online", on);
+      window.removeEventListener("offline", off);
+      window.removeEventListener("beforeinstallprompt", install);
+      clearTimeout(timer.current);
+    };
+  }, []);
+  const navigate = (p) => {
+    setPage(p);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+  const choose = (id) => {
+    setDep(id);
+    try {
+      write("myc-department", id);
+    } catch {}
+    setForm(draft(id) || blank(id));
+    setTab("production");
+    navigate("entry");
+  };
+  const setGeneral = (k, v) =>
+    setForm((f) => ({ ...f, general: { ...f.general, [k]: v } }));
+  const setHour = (i, k, v) =>
+    setForm((f) => ({
+      ...f,
+      hours: f.hours.map((h, j) => (j === i ? { ...h, [k]: v } : h)),
+    }));
+  const setStop = (i, j, k, v) =>
+    setForm((f) => ({
+      ...f,
+      hours: f.hours.map((h, x) =>
+        x === i
+          ? {
+              ...h,
+              stoppages: h.stoppages.map((s, y) =>
+                y === j ? { ...s, [k]: v } : s,
+              ),
+            }
+          : h,
+      ),
+    }));
+  const field = (
+    label,
+    key,
+    type = "text",
+    required = false,
+    placeholder = "",
+  ) => (
+    <Field
+      label={label}
+      value={form.general[key]}
+      onChange={(v) => setGeneral(key, v)}
+      type={type}
+      required={required}
+      placeholder={placeholder}
+    />
+  );
+  const save = async () => {
+    const error = validate(form);
+    if (error) {
+      notify(error, true);
+      return;
+    }
+    setBusy(true);
+    try {
+      const result = await saveRecord(form);
+      setForm(result.record);
+      setRecords(localRecords());
+      notify(
+        result.warning ||
+          (configured
+            ? "Fiche enregistrée et synchronisée."
+            : "Fiche enregistrée sur cet appareil."),
+        Boolean(result.warning),
+      );
+    } catch (e) {
+      notify(`Enregistrement impossible : ${e.message}`, true);
+    } finally {
+      setBusy(false);
+    }
+  };
+  const refresh = async () => {
+    setBusy(true);
+    try {
+      await syncRecords();
+      setRecords(await loadRecords());
+      notify("Les fiches sont à jour.");
+    } catch (e) {
+      notify(e.message, true);
+    } finally {
+      setBusy(false);
+    }
+  };
+  const exportPdf = async (record) => {
+    const error = validate(record);
+    if (error) {
+      notify(error, true);
+      return;
+    }
+    setExporting(true);
+    try {
+      const { downloadCombinedPdf } = await import("./pdf");
+      await downloadCombinedPdf(record);
+    } catch (e) {
+      notify(`PDF impossible : ${e.message}`, true);
+    } finally {
+      setExporting(false);
+    }
+  };
+  const open = (r) => {
+    setDep(r.department);
+    setForm(normalize(r));
+    setTab("production");
+    navigate("entry");
+  };
+  const fresh = () => {
+    localStorage.removeItem("myc-draft");
+    setForm(blank(form.department));
+    setModal(null);
+    setTab("production");
+  };
+  const install = async () => {
+    if (installPrompt) {
+      await installPrompt.prompt();
+      await installPrompt.userChoice;
+      setInstallPrompt(null);
+    } else setModal("install");
+  };
+  const filtered = records.filter(
+    (r) =>
+      (filter === "all" || r.department === filter) &&
+      (!from || r.general.date >= from) &&
+      (!to || r.general.date <= to) &&
+      [
+        r.general.of,
+        r.general.article,
+        r.general.client,
+        r.general.chain,
+        department(r.department).name,
+      ]
+        .join(" ")
+        .toLocaleLowerCase("fr")
+        .includes(search.toLocaleLowerCase("fr")),
+  );
+  const daily = records.filter((r) => r.general.date === today),
+    dailyTotal = daily.reduce((s, r) => s + totals(r).produced, 0),
+    pending = records.filter((r) => r._pending).length;
+  const csv = () => {
+    const cell = (v) =>
+      '"' +
+      String(v ?? "")
+        .replace(/^[=+@\-\t\r]/, "'$&")
+        .replaceAll('"', '""') +
+      '"';
+    const rows = [
+      [
+        "Date",
+        "Département",
+        "OF",
+        "Article",
+        "Poste",
+        "Équipe",
+        "OK",
+        "NOK",
+        "Taux de rebut (%)",
+        "Arrêts (min)",
+      ],
+      ...filtered.map((r) => {
+        const t = totals(r);
+        return [
+          r.general.date,
+          department(r.department).name,
+          r.general.of,
+          r.general.article,
+          r.general.chain,
+          r.general.shift,
+          t.ok,
+          t.nok,
+          t.rate.toFixed(2),
+          t.stops,
+        ];
+      }),
+    ];
+    const url = URL.createObjectURL(
+      new Blob(
+        ["\ufeff" + rows.map((row) => row.map(cell).join(";")).join("\r\n")],
+        { type: "text/csv;charset=utf-8" },
+      ),
+    );
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `MYC-registre-${today}.csv`;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 10000);
+  };
+  return (
+    <div className="app">
+      <aside className="sidebar">
+        <button
+          className="brand"
+          onClick={() => navigate("home")}
+          aria-label="Accueil MYC"
+        >
+          <span className="brand-mark">
+            MYC<span>®</span>
+          </span>
+          <span className="brand-caption">BEAUTY INNOVATION</span>
+        </button>
+        <div className="workspace-label">ESPACE PRODUCTION</div>
+        <nav>
+          {[
+            ["home", LayoutGrid, "Vue d’ensemble"],
+            ["entry", ClipboardPenLine, "Saisie de production"],
+            ["history", FolderOpen, "Rapports & historique"],
+          ].map(([id, Icon, label]) => (
+            <button
+              key={id}
+              className={page === id ? "active" : ""}
+              onClick={() => navigate(id)}
+            >
+              <Icon size={19} />
+              <span>{label}</span>
+              {page === id && <i />}
+            </button>
+          ))}
+        </nav>
+        <div className="sidebar-divider" />
+        <div className="workspace-label">LES DÉPARTEMENTS</div>
+        <div className="side-departments">
+          {DEPARTMENTS.map((x) => (
+            <button
+              key={x.id}
+              onClick={() => choose(x.id)}
+              className={
+                page === "entry" && form.department === x.id ? "selected" : ""
+              }
+            >
+              <i style={{ background: x.color }} />
+              {x.name}
+              <ChevronRight size={14} />
+            </button>
+          ))}
+        </div>
+        <div className="sidebar-bottom">
+          <div className="plant-mark">
+            <Factory size={22} />
+            <span>
+              MYC · Tunisie<small>Suivi des ateliers</small>
+            </span>
+          </div>
+          <button className="install-link" onClick={install}>
+            <Smartphone size={17} /> Installer l’application{" "}
+            <Download size={14} />
+          </button>
+        </div>
+      </aside>
+      <div className="main-shell">
+        <header className="topbar">
+          <div className="breadcrumb">
+            Espace production <ChevronRight size={14} />
+            <strong>
+              {page === "home"
+                ? "Vue d’ensemble"
+                : page === "entry"
+                  ? d.name
+                  : "Rapports"}
+            </strong>
+          </div>
+          <div className="topbar-right">
+            <span className={`connection ${!online ? "offline" : ""}`}>
+              <i />
+              {!online
+                ? "Hors connexion"
+                : configured
+                  ? "Espace partagé"
+                  : "Sur cet appareil"}
+            </span>
+            <span className="today">
+              {new Date().toLocaleDateString("fr-FR", {
+                day: "numeric",
+                month: "long",
+                year: "numeric",
+              })}
+            </span>
+            <span className="avatar">MYC</span>
+          </div>
+        </header>
+        {(!online || pending > 0) && (
+          <div className="network-banner">
+            <WifiOff size={16} />
+            {!online
+              ? "Vous pouvez continuer la saisie hors connexion."
+              : `${pending} fiche(s) en attente de synchronisation.`}
+            {online && pending > 0 && (
+              <button disabled={busy} onClick={refresh}>
+                Synchroniser
+              </button>
+            )}
+          </div>
+        )}
+        <main>
+          {page === "home" && (
+            <>
+              <div className="page-heading">
+                <div>
+                  <div className="eyebrow">ATELIERS & PERFORMANCE</div>
+                  <h1>
+                    La production, en clair<span>.</span>
+                  </h1>
+                  <p>Un espace pour vos équipes. Chaque saisie compte.</p>
+                </div>
+                <span className="access-pill">
+                  <CircleCheck size={16} /> Accès direct · sans connexion
+                </span>
+              </div>
+              <section className="welcome-panel">
+                <div className="welcome-copy">
+                  <span className="kicker">DU TERRAIN AU RAPPORT</span>
+                  <h2>
+                    Votre atelier.
+                    <br />
+                    Votre suivi quotidien.
+                  </h2>
+                  <p>
+                    Sélectionnez un département, renseignez votre production et
+                    retrouvez un rapport prêt à partager.
+                  </p>
+                  <a href="#departments" className="primary">
+                    Choisir mon département <ArrowRight size={17} />
+                  </a>
+                  <div className="welcome-foot">
+                    <span>
+                      <Check size={14} /> Production & qualité
+                    </span>
+                    <span>
+                      <Check size={14} /> PDF en un clic
+                    </span>
+                  </div>
+                </div>
+                <div className="report-illustration" aria-hidden="true">
+                  <div className="paper">
+                    <div className="paper-head">
+                      <strong>MYC</strong>
+                      <span>RAPPORT D’ATELIER</span>
+                    </div>
+                    <div className="paper-label">PRODUCTION JOURNALIÈRE</div>
+                    <h3>La précision à chaque étape.</h3>
+                    <div className="paper-lines">
+                      <i />
+                      <i />
+                    </div>
+                    <div className="paper-chart">
+                      {[38, 61, 48, 78, 67, 90, 74, 100].map((n, i) => (
+                        <span key={i} style={{ height: n + "%" }} />
+                      ))}
+                    </div>
+                    <div className="paper-bottom">
+                      <span>PRODUCTION</span>
+                      <span>QUALITÉ</span>
+                      <span>TRAÇABILITÉ</span>
+                    </div>
+                  </div>
+                  <div className="floating-label">
+                    <span>
+                      <FileText size={22} />
+                    </span>
+                    <div>
+                      Des rapports soignés
+                      <small>Prêts à télécharger et à imprimer</small>
+                    </div>
+                    <CircleCheck size={20} />
+                  </div>
+                </div>
+              </section>
+              <section id="departments">
+                <div className="section-heading">
+                  <div>
+                    <span className="eyebrow">01 / COMMENCER</span>
+                    <h2>Choisissez votre département</h2>
+                  </div>
+                  <span className="muted">4 ateliers, un même outil</span>
+                </div>
+                <div className="department-grid">
+                  {DEPARTMENTS.map((x, i) => {
+                    const Icon = ICONS[x.id];
+                    return (
+                      <button
+                        className="department-card"
+                        key={x.id}
+                        style={{ "--department": x.color }}
+                        onClick={() => choose(x.id)}
+                      >
+                        <div className="department-card-top">
+                          <span className="department-icon">
+                            <Icon size={26} />
+                          </span>
+                          <span className="department-code">
+                            0{i + 1} / {x.short}
+                          </span>
+                        </div>
+                        <h3>{x.name}</h3>
+                        <p>{x.description}</p>
+                        <div className="department-card-bottom">
+                          <span>
+                            {draft(x.id)
+                              ? "Reprendre la saisie"
+                              : "Commencer la saisie"}
+                          </span>
+                          <ArrowRight size={18} />
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </section>
+              <section className="activity-strip">
+                <div>
+                  <span className="activity-icon">
+                    <BarChart3 size={23} />
+                  </span>
+                  <div>
+                    <h3>Le point du jour</h3>
+                    <p>
+                      {dateLabel(today)} ·{" "}
+                      {configured
+                        ? "Fiches disponibles"
+                        : "Données de cet appareil"}
+                    </p>
+                  </div>
+                </div>
+                <Metric
+                  label="Fiches enregistrées"
+                  value={format(daily.length)}
+                />
+                <Metric label="Pièces produites" value={format(dailyTotal)} />
+                <button
+                  className="text-button"
+                  onClick={() => navigate("history")}
+                >
+                  Voir les rapports <ArrowRight size={16} />
+                </button>
+              </section>
+            </>
+          )}
+          {page === "entry" && (
+            <>
+              <div className="page-heading">
+                <div>
+                  <button
+                    className="back-link"
+                    onClick={() => navigate("home")}
+                  >
+                    <ArrowLeft size={14} /> Changer de département
+                  </button>
+                  <div className="eyebrow">{d.short} / FICHE D’ATELIER</div>
+                  <h1>
+                    {d.name}
+                    <span>.</span>
+                  </h1>
+                  <p>
+                    {form.id
+                      ? "Modification de votre fiche de production."
+                      : "Votre production, heure par heure."}
+                  </p>
+                </div>
+                <div className="heading-actions">
+                  <span className="draft-badge">
+                    <i />
+                    {form.id ? "Fiche enregistrée" : "Brouillon automatique"}
+                  </span>
+                  <button className="secondary" onClick={() => setModal("new")}>
+                    <Plus size={16} /> Nouvelle fiche
+                  </button>
+                </div>
+              </div>
+              <div className="metrics-grid">
+                <Metric
+                  label="Pièces conformes"
+                  value={format(stats.ok)}
+                  unit="OK"
+                  accent="green"
+                />
+                <Metric
+                  label="Pièces rejetées"
+                  value={format(stats.nok)}
+                  unit="NOK"
+                />
+                <Metric
+                  label="Taux de rebut"
+                  value={format(stats.rate)}
+                  unit="%"
+                />
+                <Metric
+                  label="Temps d’arrêt"
+                  value={format(stats.stops)}
+                  unit="min"
+                />
+              </div>
+              <div
+                className="tabs"
+                role="tablist"
+                aria-label="Étapes de saisie"
+              >
+                {[
+                  ["production", "01", "Production"],
+                  ["quality", "02", "Contrôle qualité"],
+                  ["summary", "03", "Synthèse & rapport"],
+                ].map(([id, n, label]) => (
+                  <button
+                    key={id}
+                    role="tab"
+                    aria-selected={tab === id}
+                    className={tab === id ? "active" : ""}
+                    onClick={() => setTab(id)}
+                  >
+                    <span>{n}</span>
+                    {label}
+                  </button>
+                ))}
+              </div>
+              {tab === "production" && (
+                <>
+                  <section className="card">
+                    <div className="card-heading">
+                      <div>
+                        <span className="eyebrow">IDENTIFICATION</span>
+                        <h2>Informations générales</h2>
+                      </div>
+                      <span className="muted small">* Champs obligatoires</span>
+                    </div>
+                    <div className="field-grid">
+                      {field("Date", "date", "date", true)}
+                      {field(
+                        "Référence article",
+                        "article",
+                        "text",
+                        true,
+                        "Ex. MYC-2048",
+                      )}
+                      {field(
+                        "Ordre de fabrication",
+                        "of",
+                        "text",
+                        true,
+                        "Ex. OF-2026-001",
+                      )}
+                      {field(
+                        d.machine,
+                        "chain",
+                        "text",
+                        true,
+                        `Ex. ${d.example}`,
+                      )}
+                      {field(
+                        "Équipe / shift",
+                        "shift",
+                        "text",
+                        true,
+                        "Ex. Équipe A",
+                      )}
+                      {field(
+                        "Matricule opérateur",
+                        "matricule",
+                        "text",
+                        false,
+                        "Ex. 1024",
+                      )}
+                      {field(
+                        "Client",
+                        "client",
+                        "text",
+                        false,
+                        "Nom du client",
+                      )}
+                      {field(
+                        "Objectif / heure",
+                        "cadence",
+                        "number",
+                        false,
+                        "Pièces / h",
+                      )}
+                    </div>
+                    <details className="more-fields">
+                      <summary>Informations complémentaires</summary>
+                      <div className="field-grid">
+                        {field("Lot matière", "lot")}
+                        {field("Compteur début", "counterStart", "number")}
+                        {field("Compteur fin", "counterEnd", "number")}
+                        {field("Numéro de carton", "carton")}
+                        {form.department === "injection" && (
+                          <>
+                            {field("Référence moule", "mold")}
+                            {field("Matière", "material")}
+                          </>
+                        )}
+                        {form.department === "metallisation" &&
+                          field("Vitesse de ligne", "speed", "number")}
+                        {form.department === "serigraphie" &&
+                          field("Couleur / encre", "color")}
+                      </div>
+                    </details>
+                  </section>
+                  <section className="card hourly-section">
+                    <div className="card-heading">
+                      <div>
+                        <span className="eyebrow">RELEVÉS TERRAIN</span>
+                        <h2>Production par heure</h2>
+                      </div>
+                      <span className="small muted">
+                        <Clock3 size={14} /> {form.hours.length} créneaux
+                      </span>
+                    </div>
+                    <div className="hour-table-head">
+                      <span>CRÉNEAU</span>
+                      <span>QUANTITÉ OK</span>
+                      <span>QUANTITÉ NOK</span>
+                      <span>OBSERVATIONS & ARRÊTS</span>
+                      <span />
+                    </div>
+                    <div className="hours">
+                      {form.hours.map((h, i) => (
+                        <div className="hour-row" key={i}>
+                          <div className="hour-main">
+                            <label className="hour-time">
+                              <span>Heure</span>
+                              <input
+                                aria-label={`Heure du relevé ${i + 1}`}
+                                type="time"
+                                value={h.time}
+                                onChange={(e) =>
+                                  setHour(i, "time", e.target.value)
+                                }
+                              />
+                            </label>
+                            <label>
+                              <span>Quantité OK</span>
+                              <input
+                                aria-label={`Quantité OK ${h.time}`}
+                                type="number"
+                                min="0"
+                                step="1"
+                                placeholder="0"
+                                value={h.ok}
+                                onChange={(e) =>
+                                  setHour(i, "ok", e.target.value)
+                                }
+                              />
+                            </label>
+                            <label>
+                              <span>Quantité NOK</span>
+                              <input
+                                aria-label={`Quantité NOK ${h.time}`}
+                                type="number"
+                                min="0"
+                                step="1"
+                                placeholder="0"
+                                value={h.nok}
+                                onChange={(e) =>
+                                  setHour(i, "nok", e.target.value)
+                                }
+                              />
+                            </label>
+                            <div className="hour-comment">
+                              <input
+                                aria-label={`Observation ${h.time}`}
+                                placeholder="Une observation à ajouter…"
+                                value={h.comment}
+                                onChange={(e) =>
+                                  setHour(i, "comment", e.target.value)
+                                }
+                              />
+                              <button
+                                className="text-button"
+                                onClick={() =>
+                                  setHour(i, "stoppages", [
+                                    ...h.stoppages,
+                                    { code: "", duration: "", comment: "" },
+                                  ])
+                                }
+                              >
+                                <Plus size={14} /> Arrêt
+                              </button>
+                            </div>
+                            <button
+                              className="icon-button remove-hour"
+                              aria-label={`Supprimer le créneau ${h.time}`}
+                              onClick={() => setModal({ removeHour: i })}
+                              disabled={form.hours.length === 1}
+                            >
+                              <Trash2 size={15} />
+                            </button>
+                          </div>
+                          {h.stoppages.length > 0 && (
+                            <div className="stoppages">
+                              {h.stoppages.map((s, j) => (
+                                <div className="stop-row" key={j}>
+                                  <span className="small muted">
+                                    Arrêt {j + 1}
+                                  </span>
+                                  <select
+                                    aria-label={`Code arrêt ${j + 1} à ${h.time}`}
+                                    value={s.code}
+                                    onChange={(e) =>
+                                      setStop(i, j, "code", e.target.value)
+                                    }
+                                  >
+                                    <option value="">Code</option>
+                                    {CODES.map((c) => (
+                                      <option key={c}>{c}</option>
+                                    ))}
+                                  </select>
+                                  <input
+                                    aria-label={`Durée arrêt ${j + 1} à ${h.time}`}
+                                    type="number"
+                                    min="1"
+                                    max="60"
+                                    placeholder="Minutes"
+                                    value={s.duration}
+                                    onChange={(e) =>
+                                      setStop(i, j, "duration", e.target.value)
+                                    }
+                                  />
+                                  <input
+                                    aria-label={`Motif arrêt ${j + 1} à ${h.time}`}
+                                    placeholder="Motif de l’arrêt"
+                                    value={s.comment}
+                                    onChange={(e) =>
+                                      setStop(i, j, "comment", e.target.value)
+                                    }
+                                  />
+                                  <button
+                                    className="icon-button"
+                                    aria-label={`Supprimer arrêt ${j + 1} à ${h.time}`}
+                                    onClick={() =>
+                                      setHour(
+                                        i,
+                                        "stoppages",
+                                        h.stoppages.filter((_, k) => k !== j),
+                                      )
+                                    }
+                                  >
+                                    <X size={16} />
+                                  </button>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                    <div className="table-footer">
+                      <button
+                        className="secondary"
+                        disabled={form.hours.length >= 24}
+                        onClick={() => setForm(addHour)}
+                      >
+                        <Plus size={16} /> Ajouter un créneau
+                      </button>
+                      <span>{format(stats.produced)} pièces au total</span>
+                    </div>
+                  </section>
+                </>
+              )}
+              {tab === "quality" && (
+                <section className="card">
+                  <div className="card-heading">
+                    <div>
+                      <span className="eyebrow">CONTRÔLE QUALITÉ</span>
+                      <h2>Les défauts observés</h2>
+                      <p>
+                        Relevez les occurrences par créneau. Une pièce peut
+                        présenter plusieurs défauts.
+                      </p>
+                    </div>
+                    <button
+                      className="secondary"
+                      onClick={() => setModal("defect")}
+                    >
+                      <Plus size={16} /> Ajouter un défaut
+                    </button>
+                  </div>
+                  <div className="table-scroll">
+                    <table className="quality-table">
+                      <thead>
+                        <tr>
+                          <th>Type de défaut</th>
+                          {form.hours.map((h, i) => (
+                            <th key={i}>{h.time}</th>
+                          ))}
+                          <th>Total</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {form.quality.map((q, qi) => (
+                          <tr key={qi}>
+                            <th>{q.name}</th>
+                            {q.values.map((v, vi) => (
+                              <td key={vi}>
+                                <input
+                                  type="number"
+                                  min="0"
+                                  step="1"
+                                  placeholder="—"
+                                  aria-label={`${q.name} à ${form.hours[vi]?.time}`}
+                                  value={v}
+                                  onChange={(e) =>
+                                    setForm((f) => ({
+                                      ...f,
+                                      quality: f.quality.map((row, k) =>
+                                        k === qi
+                                          ? {
+                                              ...row,
+                                              values: row.values.map((n, l) =>
+                                                l === vi ? e.target.value : n,
+                                              ),
+                                            }
+                                          : row,
+                                      ),
+                                    }))
+                                  }
+                                />
+                              </td>
+                            ))}
+                            <td>
+                              <strong>
+                                {format(
+                                  q.values.reduce((a, v) => a + number(v), 0),
+                                )}
+                              </strong>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                      <tfoot>
+                        <tr>
+                          <th>Total des occurrences</th>
+                          {form.hours.map((_, i) => (
+                            <td key={i}>
+                              {format(
+                                form.quality.reduce(
+                                  (a, q) => a + number(q.values[i]),
+                                  0,
+                                ),
+                              )}
+                            </td>
+                          ))}
+                          <td>{format(stats.defects)}</td>
+                        </tr>
+                      </tfoot>
+                    </table>
+                  </div>
+                  <div className="info-note">
+                    <FileText size={17} />
+                    <span>
+                      Le taux de rebut est calculé sur les pièces NOK / (OK +
+                      NOK). Les occurrences de défauts sont comptées séparément.
+                    </span>
+                  </div>
+                </section>
+              )}
+              {tab === "summary" && (
+                <>
+                  <div className="summary-grid">
+                    <section className="card">
+                      <div className="card-heading">
+                        <div>
+                          <span className="eyebrow">VOTRE DOCUMENT</span>
+                          <h2>Un rapport prêt à partager</h2>
+                        </div>
+                        <FileText size={28} />
+                      </div>
+                      <div className="report-id">
+                        <span>
+                          {d.name} · {dateLabel(form.general.date)}
+                        </span>
+                        <strong>
+                          {form.general.of ||
+                            "Ordre de fabrication à renseigner"}
+                        </strong>
+                        <p>
+                          {form.general.article || "Article à renseigner"} ·{" "}
+                          {form.general.chain || "Poste à renseigner"} ·{" "}
+                          {form.general.shift || "Équipe à renseigner"}
+                        </p>
+                      </div>
+                      <ul className="report-features">
+                        <li>
+                          <Check size={17} /> Synthèse de production et
+                          indicateurs
+                        </li>
+                        <li>
+                          <Check size={17} /> Relevés horaires et détail des
+                          arrêts
+                        </li>
+                        <li>
+                          <Check size={17} /> Grille qualité et principaux
+                          défauts
+                        </li>
+                        <li>
+                          <Check size={17} /> Pagination automatique et zones de
+                          visa
+                        </li>
+                      </ul>
+                      <button
+                        className="primary"
+                        disabled={exporting}
+                        onClick={() => exportPdf(form)}
+                      >
+                        <Download size={17} />
+                        {exporting
+                          ? "Préparation…"
+                          : "Télécharger le rapport PDF"}
+                      </button>
+                    </section>
+                    <section className="card">
+                      <div className="card-heading">
+                        <div>
+                          <span className="eyebrow">LECTURE RAPIDE</span>
+                          <h2>Répartition de la production</h2>
+                        </div>
+                      </div>
+                      <div className="yield-value">
+                        {format(stats.produced ? 100 - stats.rate : 0)}
+                        <small>% conformes</small>
+                      </div>
+                      <div className="yield-track">
+                        <span
+                          style={{
+                            width: `${stats.produced ? 100 - stats.rate : 0}%`,
+                          }}
+                        />
+                      </div>
+                      <div className="legend">
+                        <span>
+                          <i />
+                          {format(stats.ok)} pièces OK
+                        </span>
+                        <span>
+                          <i />
+                          {format(stats.nok)} pièces NOK
+                        </span>
+                      </div>
+                      <div className="summary-line">
+                        <span>Occurrences de défauts</span>
+                        <strong>{format(stats.defects)}</strong>
+                      </div>
+                      <div className="summary-line">
+                        <span>Arrêts de production</span>
+                        <strong>{format(stats.stops)} min</strong>
+                      </div>
+                      <div className="summary-line">
+                        <span>Créneaux renseignés</span>
+                        <strong>
+                          {
+                            form.hours.filter(
+                              (h) => h.ok !== "" || h.nok !== "",
+                            ).length
+                          }{" "}
+                          / {form.hours.length}
+                        </strong>
+                      </div>
+                    </section>
+                  </div>
+                  <section className="card">
+                    <label className="field">
+                      <span>Observations de fin de poste</span>
+                      <textarea
+                        rows={4}
+                        value={form.general.notes}
+                        placeholder="Événements marquants, consignes pour l’équipe suivante…"
+                        onChange={(e) => setGeneral("notes", e.target.value)}
+                      />
+                    </label>
+                  </section>
+                </>
+              )}
+              <div className="actionbar">
+                <span className="small muted">
+                  <CircleCheck size={16} /> Brouillon conservé sur cet appareil
+                </span>
+                <div>
+                  <button
+                    className="secondary"
+                    disabled={exporting}
+                    onClick={() => exportPdf(form)}
+                  >
+                    <Download size={17} />
+                    <span>Rapport PDF</span>
+                  </button>
+                  {tab !== "summary" && (
+                    <button
+                      className="secondary next-step"
+                      onClick={() =>
+                        setTab(tab === "production" ? "quality" : "summary")
+                      }
+                    >
+                      Continuer
+                      <ArrowRight size={16} />
+                    </button>
+                  )}
+                  <button className="primary" disabled={busy} onClick={save}>
+                    <Save size={17} />
+                    {busy ? "Enregistrement…" : "Enregistrer la fiche"}
+                  </button>
+                </div>
+              </div>
+            </>
+          )}
+          {page === "history" && (
+            <>
+              <div className="page-heading">
+                <div>
+                  <div className="eyebrow">TRAÇABILITÉ / TOUS LES ATELIERS</div>
+                  <h1>
+                    Rapports & historique<span>.</span>
+                  </h1>
+                  <p>
+                    Retrouvez vos fiches, consultez les résultats et partagez
+                    vos rapports.
+                  </p>
+                </div>
+                <button className="primary" onClick={() => navigate("home")}>
+                  <Plus size={17} /> Nouvelle saisie
+                </button>
+              </div>
+              <section className="card history-card">
+                <div className="card-heading">
+                  <h2>
+                    Registre de production{" "}
+                    <span className="count">{filtered.length}</span>
+                  </h2>
+                  <div className="heading-actions">
+                    <button
+                      className="secondary"
+                      onClick={refresh}
+                      disabled={busy}
+                    >
+                      <RefreshCw size={16} className={busy ? "spin" : ""} />{" "}
+                      Actualiser
+                    </button>
+                    <button
+                      className="secondary"
+                      onClick={csv}
+                      disabled={!filtered.length}
+                    >
+                      <Download size={16} /> CSV
+                    </button>
+                  </div>
+                </div>
+                <div className="filters">
+                  <label className="search">
+                    <Search size={17} />
+                    <input
+                      aria-label="Rechercher une fiche"
+                      placeholder="Rechercher un OF, article, client…"
+                      value={search}
+                      onChange={(e) => setSearch(e.target.value)}
+                    />
+                  </label>
+                  <label className="field">
+                    <span>Département</span>
+                    <select
+                      value={filter}
+                      onChange={(e) => setFilter(e.target.value)}
+                    >
+                      <option value="all">Tous les départements</option>
+                      {DEPARTMENTS.map((x) => (
+                        <option key={x.id} value={x.id}>
+                          {x.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <Field
+                    label="Du"
+                    type="date"
+                    value={from}
+                    onChange={setFrom}
+                  />
+                  <Field label="Au" type="date" value={to} onChange={setTo} />
+                </div>
+                <div className="table-scroll">
+                  <table className="history-table">
+                    <thead>
+                      <tr>
+                        <th>Date / OF</th>
+                        <th>Département</th>
+                        <th>Article / poste</th>
+                        <th>Production</th>
+                        <th>Rebut</th>
+                        <th>Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filtered.map((r) => {
+                        const t = totals(r),
+                          rd = department(r.department);
+                        return (
+                          <tr key={r.id}>
+                            <td data-label="Date / OF">
+                              <strong>{r.general.of}</strong>
+                              <small>
+                                {dateLabel(r.general.date)}
+                                {r._pending ? " · En attente" : ""}
+                              </small>
+                            </td>
+                            <td data-label="Département">
+                              <span
+                                className="department-tag"
+                                style={{ "--department": rd.color }}
+                              >
+                                <i />
+                                {rd.name}
+                              </span>
+                            </td>
+                            <td data-label="Article / poste">
+                              <strong>{r.general.article}</strong>
+                              <small>
+                                {r.general.chain} · {r.general.shift}
+                              </small>
+                            </td>
+                            <td data-label="Production">
+                              <strong>{format(t.produced)}</strong>
+                              <small>
+                                {format(t.ok)} OK / {format(t.nok)} NOK
+                              </small>
+                            </td>
+                            <td data-label="Rebut">
+                              <span
+                                className={t.rate > 5 ? "rate warning" : "rate"}
+                              >
+                                {format(t.rate)} %
+                              </span>
+                            </td>
+                            <td className="row-actions">
+                              <button
+                                className="text-button"
+                                onClick={() => open(r)}
+                              >
+                                Ouvrir <ArrowRight size={14} />
+                              </button>
+                              <button
+                                className="icon-button"
+                                aria-label={`PDF ${r.general.of}`}
+                                disabled={exporting}
+                                onClick={() => exportPdf(r)}
+                              >
+                                <Download size={18} />
+                              </button>
+                              <button
+                                className="icon-button danger"
+                                aria-label={`Supprimer ${r.general.of}`}
+                                onClick={() => setPendingDelete(r)}
+                              >
+                                <Trash2 size={17} />
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+                {!filtered.length && (
+                  <div className="empty-state">
+                    <FolderOpen size={38} />
+                    <h3>
+                      {records.length
+                        ? "Aucune fiche pour ces critères"
+                        : "Votre historique commence ici"}
+                    </h3>
+                    <p>
+                      {records.length
+                        ? "Modifiez vos filtres pour retrouver vos saisies."
+                        : "Les fiches enregistrées apparaîtront dans ce registre."}
+                    </p>
+                    <button
+                      className="secondary"
+                      onClick={() => navigate("home")}
+                    >
+                      Choisir un département <ArrowRight size={16} />
+                    </button>
+                  </div>
+                )}
+                <div className="registry-footer">
+                  {filtered.length} fiche(s) ·{" "}
+                  {format(filtered.reduce((a, r) => a + totals(r).produced, 0))}{" "}
+                  pièces produites
+                  <span>
+                    {configured
+                      ? "Données partagées entre ateliers"
+                      : "Données conservées sur cet appareil"}
+                  </span>
+                </div>
+              </section>
+            </>
+          )}
+          <footer>
+            <span>
+              MYC <b>BEAUTY INNOVATION</b>
+              <i /> Tunisie
+            </span>
+            <span>La précision, à chaque étape.</span>
+          </footer>
+        </main>
+      </div>
+      <nav className="mobile-nav">
+        {[
+          ["home", LayoutGrid, "Ateliers"],
+          ["entry", ClipboardPenLine, "Saisie"],
+          ["history", FolderOpen, "Rapports"],
+        ].map(([id, Icon, label]) => (
+          <button
+            key={id}
+            className={page === id ? "active" : ""}
+            onClick={() => navigate(id)}
+          >
+            <Icon size={21} />
+            <span>{label}</span>
+          </button>
+        ))}
+        <button onClick={install}>
+          <Smartphone size={21} />
+          <span>Installer</span>
+        </button>
+      </nav>
+      {notice && (
+        <div
+          role={notice.error ? "alert" : "status"}
+          className={`toast ${notice.error ? "toast-error" : ""}`}
+        >
+          {notice.error ? (
+            <TriangleAlert size={20} />
+          ) : (
+            <CircleCheck size={20} />
+          )}
+          <span>{notice.text}</span>
+          <button
+            onClick={() => setNotice(null)}
+            aria-label="Fermer la notification"
+          >
+            <X size={17} />
+          </button>
+        </div>
+      )}
+      {pendingDelete && (
+        <Modal
+          title="Supprimer cette fiche ?"
+          onClose={() => setPendingDelete(null)}
+        >
+          <p>
+            La fiche <strong>{pendingDelete.general.of}</strong> du{" "}
+            {dateLabel(pendingDelete.general.date)} et ses relevés seront
+            supprimés définitivement.
+          </p>
+          <div className="modal-actions">
+            <button
+              className="secondary"
+              onClick={() => setPendingDelete(null)}
+            >
+              Annuler
+            </button>
+            <button
+              className="primary destructive"
+              disabled={busy}
+              onClick={async () => {
+                setBusy(true);
+                try {
+                  await removeRecord(pendingDelete);
+                  setRecords(localRecords());
+                  if (form.id === pendingDelete.id)
+                    setForm(blank(form.department));
+                  setPendingDelete(null);
+                  notify("Fiche supprimée.");
+                } catch (e) {
+                  notify(e.message, true);
+                } finally {
+                  setBusy(false);
+                }
+              }}
+            >
+              Supprimer la fiche
+            </button>
+          </div>
+        </Modal>
+      )}
+      {modal === "new" && (
+        <Modal
+          title="Commencer une nouvelle fiche ?"
+          onClose={() => setModal(null)}
+        >
+          <p>
+            Le brouillon actuel de {d.name} sera remplacé. Enregistrez-le
+            d’abord si vous souhaitez le conserver dans l’historique.
+          </p>
+          <div className="modal-actions">
+            <button className="secondary" onClick={() => setModal(null)}>
+              Revenir à la saisie
+            </button>
+            <button className="primary" onClick={fresh}>
+              Nouvelle fiche
+            </button>
+          </div>
+        </Modal>
+      )}
+      {modal === "install" && (
+        <Modal title="MYC sur votre téléphone" onClose={() => setModal(null)}>
+          <div className="install-visual">
+            <Smartphone size={42} />
+            <span>Votre atelier, à portée de main.</span>
+          </div>
+          <p>
+            <strong>iPhone / iPad :</strong> ouvrez le site dans Safari, touchez
+            Partager, puis « Sur l’écran d’accueil ».
+          </p>
+          <p>
+            <strong>Android / ordinateur :</strong> dans le menu de votre
+            navigateur, choisissez « Installer l’application » ou « Ajouter à
+            l’écran d’accueil ».
+          </p>
+          <p className="small muted">
+            L’installation nécessite une adresse HTTPS (ou localhost pour les
+            essais). Ouvrez l’application une première fois en ligne pour la
+            rendre disponible hors connexion.
+          </p>
+        </Modal>
+      )}
+      {modal === "defect" && (
+        <Modal title="Ajouter un type de défaut" onClose={() => setModal(null)}>
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              const name = new FormData(e.currentTarget).get("name").trim();
+              if (!name) return;
+              if (
+                form.quality.some(
+                  (q) =>
+                    q.name.toLocaleLowerCase() === name.toLocaleLowerCase(),
+                )
+              ) {
+                notify("Ce défaut existe déjà.", true);
+                return;
+              }
+              setForm((f) => ({
+                ...f,
+                quality: [
+                  ...f.quality,
+                  { name, values: f.hours.map(() => "") },
+                ],
+              }));
+              setModal(null);
+            }}
+          >
+            <label className="field">
+              <span>Libellé du défaut</span>
+              <input
+                name="name"
+                required
+                maxLength={80}
+                autoFocus
+                placeholder="Ex. Défaut d’adhérence"
+              />
+            </label>
+            <div className="modal-actions">
+              <button
+                type="button"
+                className="secondary"
+                onClick={() => setModal(null)}
+              >
+                Annuler
+              </button>
+              <button className="primary">Ajouter le défaut</button>
+            </div>
+          </form>
+        </Modal>
+      )}
+      {modal && typeof modal === "object" && "removeHour" in modal && (
+        <Modal title="Supprimer ce créneau ?" onClose={() => setModal(null)}>
+          <p>
+            Les quantités, arrêts et défauts associés à{" "}
+            {form.hours[modal.removeHour].time} seront retirés de la fiche.
+          </p>
+          <div className="modal-actions">
+            <button className="secondary" onClick={() => setModal(null)}>
+              Annuler
+            </button>
+            <button
+              className="primary destructive"
+              onClick={() => {
+                const index = modal.removeHour;
+                setForm((f) => ({
+                  ...f,
+                  hours: f.hours.filter((_, i) => i !== index),
+                  quality: f.quality.map((q) => ({
+                    ...q,
+                    values: q.values.filter((_, i) => i !== index),
+                  })),
+                }));
+                setModal(null);
+              }}
+            >
+              Supprimer le créneau
+            </button>
+          </div>
+        </Modal>
+      )}
+    </div>
+  );
+}

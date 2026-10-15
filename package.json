@@ -3,7 +3,28 @@
   "private": true,
   "version": "1.0.0",
   "type": "module",
-  "scripts": {"dev":"vite --host 0.0.0.0", "build":"vite build", "preview":"vite preview"},
-  "dependencies": {"@supabase/supabase-js":"^2.57.0", "lucide-react":"^0.468.0", "pdf-lib":"^1.17.1", "react":"^18.3.1", "react-dom":"^18.3.1"},
-  "devDependencies": {"@vitejs/plugin-react":"^4.3.4", "autoprefixer":"^10.4.20", "postcss":"^8.4.49", "tailwindcss":"^3.4.17", "vite":"^6.0.5"}
+  "scripts": {
+    "dev": "vite --host 0.0.0.0",
+    "build": "vite build",
+    "preview": "vite preview",
+    "test": "node --test tests/model.test.js",
+    "test:e2e": "playwright test",
+    "format": "prettier --write src tests *.js *.json index.html README.md"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.57.0",
+    "lucide-react": "^0.468.0",
+    "pdf-lib": "^1.17.1",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.64.1",
+    "@vitejs/plugin-react": "^4.3.4",
+    "autoprefixer": "^10.4.20",
+    "postcss": "^8.4.49",
+    "prettier": "^3.9.10",
+    "tailwindcss": "^3.4.17",
+    "vite": "^6.0.5"
+  }
 }

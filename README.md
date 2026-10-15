@@ -1,29 +1,60 @@
-﻿# MYC · Suivi de production – Métallisation
+﻿# MYC - Production & Qualité
 
-Application React + Vite, Tailwind CSS, Supabase PostgreSQL et pdf-lib. Interface française, optimisée pour ordinateur, tablette et mobile.
+Application React + Vite pour les ateliers Métallisation, Assemblage, Injection et Sérigraphie. Saisie directe, sans écran de connexion. Interface française, claire et adaptée aux téléphones, aux tablettes et aux ordinateurs.
 
-## Démarrer
+## Démarrage
 
-1. Installez Node.js 20 ou ultérieur.
-2. Dans le dossier du projet, lancez `npm install` puis `npm run dev`.
-3. Renseignez `.env` avec l’URL Supabase et `VITE_SUPABASE_PUBLISHABLE_KEY`.
-4. Dans l’éditeur SQL Supabase, exécutez `supabase/schema.sql`.
+```powershell
+npm install
+npm run dev
+```
 
-Le site s’ouvre directement sans écran de connexion. Les fiches MYC Métallisation sont accessibles en lecture et en écriture à toute personne pouvant atteindre l’application et son API. Les règles RLS de ce projet n’ouvrent que les tables dédiées `myc_metallisation_`; les autres tables Supabase ne sont pas modifiées. Sans variables Supabase, l’application conserve les saisies localement dans le navigateur.
+Ouvrir l’adresse affichée par Vite. Pour créer la version déployable :
 
-## Téléchargement des PDF
+```powershell
+npm run build
+npm run preview -- --host 0.0.0.0
+```
 
-Depuis la saisie et l’historique, les deux PDF Production et Défauts sont toujours téléchargeables à partir des données. Tant que les modèles originaux ne sont pas fournis, pdf-lib crée un rapport numérique de remplacement, sur une page A4 paysage, avec les informations générales, les relevés horaires, les défauts, les totaux et le graphique dans le PDF Qualité. Le rapport porte la mention « modèle original non fourni » et ne reproduit pas la mise en page papier MYC.
+## Mise à jour de la base Supabase
 
-Pour retrouver exactement les fiches papier, placez les PDF vierges originaux ici :
+Dans **Supabase > SQL Editor > New query**, coller et exécuter le fichier [`supabase/SQL_EDIT_MYC_V2.sql`](supabase/SQL_EDIT_MYC_V2.sql). Ce script prend en charge les installations neuves et celles qui utilisent déjà le précédent schéma MYC. Il conserve les fiches existantes, ajoute leur département (les anciennes deviennent des fiches de métallisation), crée un index et actualise la fonction de sauvegarde. Il est transactionnel et réexécutable. Le projet ne l’applique pas automatiquement : vous gardez le contrôle de l’exécution.
 
-- `public/templates/production-original.pdf`
-- `public/templates/defauts-original.pdf`
+Configurer `.env` :
 
-Puis renseignez les positions dans `PDF_LAYOUT.production.fields` et `PDF_LAYOUT.quality.fields` dans `src/pdf.js`. Les modèles originaux serviront alors de fonds ; le rapport numérique reste disponible en secours si un modèle est manquant.
+```dotenv
+VITE_SUPABASE_URL=https://votre-projet.supabase.co
+VITE_SUPABASE_PUBLISHABLE_KEY=votre-cle-publique
+```
 
-## Données
+`VITE_SUPABASE_ANON_KEY` reste accepté. Ne jamais placer une clé `service_role` dans le navigateur. Pour répondre au mode sans connexion demandé, les règles ouvertes concernent seulement les quatre tables `myc_metallisation_*`; les autres tables Supabase ne sont pas modifiées. Le choix du département classe et filtre les fiches, mais ne limite pas les droits d’accès.
 
-`myc_metallisation_reports.record_data` conserve la saisie complète à réouvrir ; `myc_metallisation_hourly_entries`, `myc_metallisation_stoppages` et `myc_metallisation_quality_defects` conservent les mesures sous forme relationnelle. La fonction `save_myc_metallisation_report` met à jour l’ensemble en une transaction. Les tables ont RLS ; les politiques `anon` sont ouvertes uniquement sur les tables MYC Métallisation pour autoriser l’usage sans connexion.
+## Saisie et rapports
 
-Les créneaux horaires de démarrage sont 07:00–16:00 dans `src/App.jsx` (`TIMES`) et peuvent être remplacés par ceux des formulaires papier originaux.
+Chaque département possède ses propres types de défauts et champs complémentaires dans [`src/model.js`](src/model.js). Les opérateurs renseignent les quantités par heure, les arrêts de production et le contrôle qualité. Un créneau ajouté est aussi ajouté à la grille qualité ; les heures passent correctement de 23 h à minuit.
+
+Le taux de rebut est calculé en pièces : **NOK / (OK + NOK) × 100**. Le nombre d’occurrences de défauts est suivi indépendamment, car une pièce peut présenter plusieurs défauts. Les contrôles bloquent les quantités négatives, les nombres décimaux, les arrêts sans code et les arrêts dépassant 60 minutes par créneau.
+
+Le téléchargement PDF comprend une synthèse, les données d’identification, les relevés horaires, les arrêts, la grille des défauts, le classement qualité et les zones de visa. Les commentaires longs sont enveloppés et les tableaux paginés. Télécharger un rapport n’enregistre pas automatiquement les modifications ; utilisez **Enregistrer la fiche** si vous souhaitez ajouter le rapport à l’historique partagé.
+
+L’historique permet de retrouver les fiches par département, date, OF, article, client ou poste, puis d’exporter les résultats filtrés au format CSV.
+
+## Données et fonctionnement hors connexion
+
+Le navigateur conserve un brouillon distinct pour chaque département et reprend les anciennes fiches locales. Avec Supabase configuré, la fiche est sauvegardée sur l’appareil avant sa transmission ; en cas de coupure, elle reste dans la file à synchroniser une fois le réseau revenu. L’historique chargé depuis Supabase est paginé par groupes de 500. Sans Supabase, l’enregistrement reste sur l’appareil utilisé. Effacer les données du navigateur efface les brouillons et les fiches non synchronisées. La synchronisation fonctionne tant que l’application est ouverte, sans tâche en arrière-plan après fermeture.
+
+## Installer sur téléphone
+
+Le build comprend le manifeste PWA, des icônes iOS/Android et un service worker qui met en cache le code de l’application. Les appels Supabase ne sont pas mis en cache. Ouvrir le site en ligne une première fois pour préparer l’accès hors connexion.
+
+Pour installer le site sur un téléphone, le déployer sur une adresse **HTTPS** : l’URL locale `http://localhost` fonctionne pour les essais sur ordinateur, mais une adresse `http://192.168…` n’autorise pas l’installation PWA. Sur Android ou Chrome, utiliser **Installer l’application**. Sur iPhone ou iPad : Safari > **Partager** > **Sur l’écran d’accueil**.
+
+## Vérifications
+
+```powershell
+npm test
+npm run test:e2e
+npm run build
+```
+
+Les tests unitaires couvrent les départements, la reprise des fiches, les calculs, les validations et les rapports longs. Les tests Edge couvrent les parcours de saisie, le téléphone et le mode hors connexion. Les tests utilisent une base locale et ne modifient pas Supabase. Les PDF d’exemple et captures de vérification sont produits dans `output/`.
