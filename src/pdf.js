@@ -343,17 +343,23 @@ export async function makeCombinedPdf(input) {
   });
   return doc.save();
 }
-export async function downloadCombinedPdf(record) {
-  const bytes = await makeCombinedPdf(record);
-  const url = URL.createObjectURL(
-    new Blob([bytes], { type: "application/pdf" }),
-  );
-  const a = document.createElement("a");
-  a.href = url;
+export function combinedPdfFilename(record) {
   const of = String(record.general.of || "fiche")
     .replace(/[^a-zA-Z0-9_-]/g, "-")
     .slice(0, 60);
-  a.download = `MYC-${department(record.department).short}-${record.general.date}-${of}.pdf`;
+  return `MYC-${department(record.department).short}-${record.general.date}-${of}.pdf`;
+}
+
+export async function prepareCombinedPdf(record) {
+  const bytes = await makeCombinedPdf(record);
+  return URL.createObjectURL(new Blob([bytes], { type: "application/pdf" }));
+}
+
+export async function downloadCombinedPdf(record) {
+  const url = await prepareCombinedPdf(record);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = combinedPdfFilename(record);
   document.body.appendChild(a);
   a.click();
   a.remove();

@@ -89,10 +89,23 @@ test("mobile : champs lisibles, pas de débordement et conservation du brouillon
     .filter({ hasText: "Sérigraphie" })
     .click();
   await page.getByLabel("Référence article").fill("SER-MOBILE");
+  await page.getByLabel("Ordre de fabrication").fill("OF-MOBILE-01");
+  await page.getByLabel("Machine", { exact: false }).fill("S01");
+  await page.getByLabel("Équipe / shift").fill("Équipe A");
   await page.screenshot({
     path: "output/screenshots/mobile-entry.png",
     fullPage: true,
   });
+  await page.getByRole("button", { name: "Rapport PDF", exact: true }).click();
+  await expect(page.getByRole("dialog")).toContainText(
+    "Votre rapport PDF est prêt",
+  );
+  await expect(
+    page.getByTitle("Aperçu du rapport de production"),
+  ).toHaveAttribute("src", /^blob:/);
+  const mobileDownload = page.waitForEvent("download");
+  await page.getByRole("link", { name: /Télécharger le PDF/ }).click();
+  expect((await mobileDownload).suggestedFilename()).toContain("MYC-SER");
   for (const width of [320, 360, 390, 768]) {
     await page.setViewportSize({ width, height: 844 });
     expect(
@@ -112,20 +125,16 @@ test("PWA : manifeste, cache et rechargement sans réseau", async ({
   page,
   context,
 }) => {
-  page.on("requestfailed", (r) => console.log("PWA REQUEST FAILED", r.url(), r.failure()?.errorText));
-  page.on("pageerror", (e) => console.log("PWA PAGE ERROR", e.message));
   await page.goto("/");
   await page.evaluate(() => navigator.serviceWorker.ready);
   await page.waitForFunction(() => navigator.serviceWorker.controller !== null);
-  console.log("PWA CACHE", JSON.stringify(await page.evaluate(async () => ({ controller: navigator.serviceWorker.controller?.scriptURL, caches: await Promise.all((await caches.keys()).map(async k=>({name:k, urls:(await (await caches.open(k)).keys()).map(x=>new URL(x.url).pathname)}))) }))));
   const manifest = await (
     await page.request.get("/manifest.webmanifest")
   ).json();
   expect(manifest.display).toBe("standalone");
   expect(manifest.icons).toHaveLength(2);
   await context.setOffline(true);
-  try {await page.reload({waitUntil:"domcontentloaded"});} catch(e) {console.log("OFFLINE RELOAD",e.message);}
-  console.log("OFFLINE PAGE",JSON.stringify(await page.evaluate(()=>({url:location.href,title:document.title,body:document.body?.innerText,html:document.documentElement.outerHTML.slice(0,500)}))));
+  await page.reload();
   await expect(
     page.getByRole("heading", { name: "La production, en clair." }),
   ).toBeVisible();

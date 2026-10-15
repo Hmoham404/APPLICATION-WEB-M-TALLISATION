@@ -30,7 +30,7 @@ self.addEventListener('fetch', event => {
   if(req.method!=='GET' || url.origin!==self.location.origin) return;
   event.respondWith((async()=>{
     const cache=await caches.open(CACHE);
-    const cached=await cache.match(req);
+    const cached=await cache.match(url.pathname,{ignoreSearch:true,ignoreVary:true});
     if(cached)return cached;
     try{return await fetch(req)}
     catch{return req.mode==='navigate' ? cache.match('/index.html') : new Response('',{status:503})}

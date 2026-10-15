@@ -136,7 +136,8 @@ export default function App() {
   const [modal, setModal] = useState(null),
     [pendingDelete, setPendingDelete] = useState(null),
     [installPrompt, setInstallPrompt] = useState(null),
-    [exporting, setExporting] = useState(false);
+    [exporting, setExporting] = useState(false),
+    [pdfPreview, setPdfPreview] = useState(null);
   const timer = useRef(),
     storageWarned = useRef(false),
     d = department(form.department),
@@ -279,8 +280,19 @@ export default function App() {
     }
     setExporting(true);
     try {
-      const { downloadCombinedPdf } = await import("./pdf");
-      await downloadCombinedPdf(record);
+      const pdf = await import("./pdf");
+      if (
+        matchMedia("(max-width: 760px)").matches ||
+        navigator.maxTouchPoints > 0
+      ) {
+        const url = await pdf.prepareCombinedPdf(record);
+        setPdfPreview({
+          url,
+          filename: pdf.combinedPdfFilename(record),
+        });
+      } else {
+        await pdf.downloadCombinedPdf(record);
+      }
     } catch (e) {
       notify(`PDF impossible : ${e.message}`, true);
     } finally {
@@ -1581,6 +1593,43 @@ export default function App() {
             >
               Supprimer le créneau
             </button>
+          </div>
+        </Modal>
+      )}
+      {pdfPreview && (
+        <Modal
+          title="Votre rapport PDF est prêt"
+          onClose={() => {
+            URL.revokeObjectURL(pdfPreview.url);
+            setPdfPreview(null);
+          }}
+        >
+          <p className="pdf-preview-help">
+            Téléchargez le fichier ou ouvrez-le dans votre navigateur. Sur
+            iPhone ou iPad, utilisez ensuite <strong>Partager</strong> puis
+            <strong> Enregistrer dans Fichiers</strong>.
+          </p>
+          <iframe
+            className="pdf-preview-frame"
+            src={pdfPreview.url}
+            title="Aperçu du rapport de production"
+          />
+          <div className="modal-actions pdf-preview-actions">
+            <a
+              className="primary"
+              href={pdfPreview.url}
+              download={pdfPreview.filename}
+            >
+              <Download size={16} /> Télécharger le PDF
+            </a>
+            <a
+              className="secondary"
+              href={pdfPreview.url}
+              target="_blank"
+              rel="noreferrer"
+            >
+              Ouvrir le rapport
+            </a>
           </div>
         </Modal>
       )}
